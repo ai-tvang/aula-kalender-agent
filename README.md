@@ -2,7 +2,20 @@
 
 Læser Aula for dig hver uge og lægger de datoer, du som forælder skal bruge, ind i din Outlook-kalender. Det gælder forældremøder, kontaktforældrearrangementer, fødselsdage, legeaftaler, svarfrister og skolens begivenheder. Hver aftale bliver mærket med barnets navn og klasse, fx `[Emma 2.a] Forældremøde`.
 
-Du får også en kort ugemail med det, agenten har lagt ind, og med ting, du bør kigge på selv: tilbud fra klubben, usikre datoer og dage hvor flere børn har noget samtidig.
+Hver søndag får du også en ugemail med **Husk i ugen** øverst: én linje pr. barn pr. dag med lektier, ture, idræt og svømning, ting der skal med, og hvornår barnet har fri. Fx:
+
+```
+Onsdag 11/11
+  [Emma 2.a] Tur til skoven, tøj efter vejret. Fri kl. 13.40.
+  Lektie til torsdag: Læsebog kap. 20-22 + opgaver.
+  [Oscar 0.b] Idrætstøj og håndklæde. Fri kl. 12.00 (Matematikkens dag).
+```
+
+Under huskelisten står de nye aftaler og ting, du bør kigge på selv: tilbud fra klubben, usikre datoer og dage, hvor flere børn har noget samtidig.
+
+**Dine data bliver hos dig.** Agenten kører på din egen computer. Login, indstillinger og alt, den henter, ligger i agent-mappen, og login er krypteret med Windows. Intet sendes til forfatteren af agenten, og der er ingen statistik eller sporing. Ud over selve installationen taler agenten kun med Aula (og skolens ugeplansystem via Aula), din Outlook-konto og Claude (Anthropic), som læser Aula-indholdet for dig. Se [Privatliv og sikkerhed](#privatliv-og-sikkerhed).
+
+**Open source.** Agenten er gratis og må bruges af alle (MIT-licens). Der arbejdes på andre AI-modeller end Claude, andre kalendere (fx iPhone og Google) og andre mailtjenester. [Feedback](#feedback) er meget velkommen.
 
 > Uofficielt projekt. Det er ikke lavet eller godkendt af Aula, KL, STIL eller Netcompany, og det bruger Aulas interne API, som kan ændre sig uden varsel.
 
@@ -26,8 +39,8 @@ Hver uge (som standard søndag kl. 7):
 - **Windows 10 eller 11.** Det er det eneste, der er testet.
 - **En personlig Outlook-konto** (@outlook.com, @hotmail.com, @live.dk). Arbejdskonti blokerer ofte for den slags adgang. Outlook-appen skal ikke være installeret; agenten logger selv ind.
 - **Adgang til Claude** på én af to måder:
-  - **API-nøgle** fra [console.anthropic.com](https://console.anthropic.com/settings/keys). Du betaler pr. kørsel, typisk 1,50-2 kr. om ugen (se [Pris](#pris)). Kræver betalingskort og lidt kredit.
-  - **Claude Code**, hvis du allerede har et betalt Claude-abonnement. Kørslerne tæller med i dit almindelige forbrug. Claude-appen er ikke nok; det er Claude Code, der skal installeres. Det gøres med Anthropics officielle kommando i PowerShell, `irm https://claude.ai/install.ps1 | iex`, eller med `winget install Anthropic.ClaudeCode`. Git er ikke nødvendigt. Åbn et nyt PowerShell-vindue bagefter, kør `claude` én gang og log ind. Installér Claude Code, før du kører opsætningen, så vælger den det automatisk.
+  - **Claude Code (anbefalet)** med et betalt Claude-abonnement. Kørslerne tæller med i dit almindelige forbrug og koster ikke ekstra. Claude-appen er ikke nok; det er Claude Code, der skal installeres. Det gøres med Anthropics officielle kommando i PowerShell, `irm https://claude.ai/install.ps1 | iex`, eller med `winget install Anthropic.ClaudeCode`. Git er ikke nødvendigt. Åbn et nyt PowerShell-vindue bagefter, kør `claude` én gang og log ind. Installér Claude Code, før du kører opsætningen, så vælger den det automatisk.
+  - **API-nøgle** fra [console.anthropic.com](https://console.anthropic.com/settings/keys), hvis du ikke har et Claude-abonnement. Du betaler pr. kørsel, i dag omkring 6-10 kr. om måneden (se [Pris](#pris)). Kræver betalingskort og lidt kredit.
 
   Du behøver ikke bruge Claude til andet. Bruger du fx ChatGPT til hverdag, er API-nøglen den nemmeste vej.
 - **MitID-appen** og adgang til Aula som forælder.
@@ -214,6 +227,17 @@ Krypteringen er bundet til din Windows-bruger på netop denne computer. En kopi 
 - Claude kan tolke det samme lidt forskelligt fra kørsel til kørsel. Ugemailen og `runs`-mappen viser, hvad der skete.
 - Ugeplaner afhænger af, hvilket system skolen bruger, og af at læreren skriver det i ugeplanen. Kør `agent.py ugeplan` for at se, hvad agenten finder hos jer.
 - Kun testet på Windows med Outlook. Google Kalender understøttes ikke endnu.
+
+## Feedback
+
+Feedback er meget velkommen, så projektet kan blive så godt som muligt. Det gælder især:
+
+- Andre skoler end den, agenten er bygget på. Aula, ugeplaner og grupper er sat forskelligt op fra skole til skole.
+- Hvor installationen gik i stå, eller hvor en tekst var uklar.
+- Aftaler eller husk-punkter, der manglede, eller som ikke burde være kommet med.
+- Ønsker til andre AI-modeller, kalendere og mailtjenester.
+
+Opret et [issue](../../issues) her på GitHub. Fjern navne og beskeder fra Aula, før du indsætter skærmbilleder eller uddrag.
 
 ## Tak til
 
