@@ -1,0 +1,17 @@
+[
+  {
+    "title": "Halloween for klassen",
+    "date": "2026-10-31",
+    "start": "16:00",
+    "end": "18:00",
+    "location": "Hos en af familierne",
+    "children": ["Oscar"],
+    "notes": "Fra kontaktforældremødet. Tag en ret med."
+  },
+  {
+    "title": "Juleklip",
+    "date": "2026-12-01",
+    "children": ["Emma", "Oscar"],
+    "notes": "Sidste lektion. Tidspunkt aftales med lærerne."
+  }
+]

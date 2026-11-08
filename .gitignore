@@ -1,0 +1,17 @@
+# Personlige data og login. Må aldrig komme på GitHub.
+config.json
+state.json
+manuelle_aftaler.json
+graph_token_cache.json
+graph_token_cache.dat
+aula_tokens.dat
+*.dat
+runs/
+logs/
+export/
+*.tmp
+
+# Python
+__pycache__/
+*.pyc
+.venv/
