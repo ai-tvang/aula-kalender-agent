@@ -36,7 +36,7 @@ Hver uge (som standard søndag kl. 7):
 ## Installation
 
 1. Hent projektet: klik **Code > Download ZIP** og pak det ud, fx til `C:\Users\<dig>\Projects`. Omdøb gerne mappen til `aula-kalenderagent`. Læg den **ikke** i OneDrive eller en anden synkroniseret mappe.
-2. Åbn mappen i Stifinder, højreklik i den og vælg **Åbn i Terminal** (Windows 10: hold Shift nede, højreklik og vælg **Åbn PowerShell-vindue her**). Kør:
+2. Åbn mappen i Stifinder, så du kan se filen `opsaet.ps1`. Højreklik på et tomt sted i mappen og vælg **Åbn i Terminal** (Windows 10: hold Shift nede, højreklik og vælg **Åbn PowerShell-vindue her**). Kør:
    ```
    powershell -ExecutionPolicy Bypass -File .\opsaet.ps1
    ```
