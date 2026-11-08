@@ -237,7 +237,7 @@ Feedback er meget velkommen, så projektet kan blive så godt som muligt. Det g�
 - Aftaler eller husk-punkter, der manglede, eller som ikke burde være kommet med.
 - Ønsker til andre AI-modeller, kalendere og mailtjenester.
 
-Opret et [issue](../../issues) her på GitHub. Fjern navne og beskeder fra Aula, før du indsætter skærmbilleder eller uddrag.
+Opret et [issue](../../issues) her på GitHub, eller skriv til mig på [LinkedIn](https://www.linkedin.com/in/thomas-christian-vang-1b625828). Fjern navne og beskeder fra Aula, før du indsætter skærmbilleder eller uddrag.
 
 ## Tak til
 
