@@ -17,6 +17,8 @@ Under huskelisten står de nye aftaler og ting, du bør kigge på selv: tilbud f
 
 **Open source.** Agenten er gratis og må bruges af alle (MIT-licens). Der arbejdes på andre AI-modeller end Claude, andre kalendere (fx iPhone og Google) og andre mailtjenester. [Feedback](#feedback) er meget velkommen.
 
+**Du skal bruge:** en Windows-computer, en personlig Outlook-konto (fx @outlook.com eller @hotmail.com), MitID-appen og enten et betalt Claude-abonnement eller en API-nøgle. Se [Det skal du have](#det-skal-du-have).
+
 > Uofficielt projekt. Det er ikke lavet eller godkendt af Aula, KL, STIL eller Netcompany, og det bruger Aulas interne API, som kan ændre sig uden varsel.
 
 ## Hvad den gør
@@ -78,6 +80,39 @@ Vil du have en anden dag eller et andet tidspunkt, så åbn PowerShell i agent-m
    powershell -ExecutionPolicy Bypass -File .\opsaet.ps1
    ```
 </details>
+
+### Er det sikkert at køre linjen?
+
+Linjen henter [install.ps1](install.ps1) fra dette repo og kører den. Du kan åbne filen og læse den først; den er kort. Den gør tre ting:
+
+1. Henter agenten som ZIP-fil fra GitHub og lægger den i `C:\Users\<dig>\Aula-kalenderagent`.
+2. Starter [opsaet.ps1](opsaet.ps1), som installerer Python (via winget fra python.org), uv (fra astral.sh) og, hvis du siger ja, Claude Code (fra claude.ai).
+3. Opsætningen opretter en planlagt opgave og genveje i Start-menuen.
+
+Intet sendes til forfatteren af agenten. Hvad agenten gemmer og sender til Claude, står under [Privatliv og sikkerhed](#privatliv-og-sikkerhed), og hvordan du fjerner det igen, under [Sådan trækker du adgangen tilbage](#sådan-trækker-du-adgangen-tilbage).
+
+### Hjælp fra Claude eller ChatGPT
+
+Du kan indsætte linket til denne side i Claude eller ChatGPT og skrive fx "Hjælp mig med at installere den her trin for trin". Går noget galt, så kopiér teksten fra PowerShell-vinduet ind i chatten. Fjern navne på børn og andre forældre først.
+
+### Hvis noget går galt
+
+| Det ser du | Gør sådan |
+|---|---|
+| Rød tekst om `iexirm` eller en lang, forkert kommando | Linjen blev indsat to gange. Tryk Esc, og indsæt den én gang. |
+| Fejl om, at scripts er deaktiveret ("running scripts is disabled") | Brug linjen fra trin 2. Ved den manuelle vej: kør `powershell -ExecutionPolicy Bypass -File .\opsaet.ps1`. |
+| "STOP: Din brugermappe ligger i OneDrive" | Brug den manuelle vej, og læg mappen uden for OneDrive, fx `C:\Aula-kalenderagent`. |
+| "Python 3.14 kunne ikke installeres" | Installer Python 3.14 fra [python.org](https://www.python.org/downloads/windows/), og kør linjen igen. |
+| `claude` findes ikke, eller Claude Code beder om login under kørslen | Åbn et nyt PowerShell-vindue, kør `claude`, log ind og skriv `/exit`. Kør derefter **Opsætning** fra Start-menuen (eller linjen igen). |
+| Du har ikke et Claude-abonnement | Svar nej til Claude Code, og brug en API-nøgle (se [Det skal du have](#det-skal-du-have)). |
+| MitID spørger, om du vil logge ind som privatperson eller et firma | Vælg dig selv som privatperson. |
+| "Codes read. Approve the login in your MitID app." | Teksten er på engelsk, men betyder bare: godkend i MitID-appen. |
+| Outlook-login: kode og microsoft.com/link | Åbn microsoft.com/link i browseren, skriv koden, log ind med din personlige Outlook-konto og godkend. Vinduet fortsætter selv. |
+| Outlook-login afvises, eller du bliver bedt om en administrator | Det er sandsynligvis en arbejds- eller skolekonto. Brug en personlig konto, fx en ny gratis @outlook.com. |
+| Opsætningen stoppede halvvejs | Kør linjen eller **Opsætning** igen. Det, der allerede er gemt (fx MitID og Outlook), genbruges. |
+| Ingen ugemail søndag | Computeren var slukket eller i dvale. Agenten kører, når den tændes. Ellers se `logs\agent.log` via **Åbn agent-mappen**. |
+
+Står din fejl ikke her, så opret et [issue](../../issues) med teksten fra vinduet (uden navne).
 
 ## config.json
 
