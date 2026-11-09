@@ -61,7 +61,7 @@ $a = New-ScheduledTaskAction -Execute $uvSti -Argument "run --python-preference 
 $t = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $Dag -At $Tid
 Register-ScheduledTask -TaskName "Aula-kalenderagent ugentlig" -Action $a -Trigger $t -Settings $settings -Force | Out-Null
 $dagDk = @{Monday="mandag";Tuesday="tirsdag";Wednesday="onsdag";Thursday="torsdag";Friday="fredag";Saturday="lørdag";Sunday="søndag"}[$Dag]
-Ok "Agenten kører hver $dagDk kl. $Tid. Computeren må gerne være i dvale, men ikke slukket."
+Ok "Agenten kører hver $dagDk kl. $Tid. Er computeren slukket, kører den, så snart du tænder den."
 if ($Daglig) {
     $a2 = New-ScheduledTaskAction -Execute $uvSti -Argument "run --python-preference only-system agent.py daily" -WorkingDirectory $Dir
     $t2 = New-ScheduledTaskTrigger -Daily -At "09:30"

@@ -44,7 +44,7 @@ Hver uge (som standard søndag kl. 7):
 
   Du behøver ikke bruge Claude til andet. Bruger du fx ChatGPT til hverdag, er API-nøglen den nemmeste vej.
 - **MitID-appen** og adgang til Aula som forælder.
-- En computer, der er **i dvale og ikke slukket**, når agenten skal køre, med vækningstimere slået til i strømindstillingerne.
+- En computer, der **kører agenten om søndagen**. Er den i dvale, vækkes den (kræver, at vækningstimere er slået til i strømindstillingerne; på mange bærbare kun, når de er sat til strøm). Er den slukket, kører agenten, så snart du tænder den, og mailen kommer få minutter efter.
 
 ## Installation
 
