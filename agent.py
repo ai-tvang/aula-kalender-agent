@@ -2348,15 +2348,52 @@ def set_mode(cfg: dict, mode: str) -> None:
     cfg.pop("claude_mode", None)
 
 
-def install_cli(name: str, script_url: str) -> None:
-    """Installerer Claude Code eller Codex med udbyderens officielle installationsscript (kun Windows)."""
-    print(f"  Installerer {name} ...")
-    subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", f"irm {script_url} | iex"])
-    # Installationen sætter stien for nye vinduer; tilføj den også i denne proces.
+def refresh_path() -> None:
+    """Henter PATH fra Windows igen, så et program, der lige er installeret, kan findes."""
+    parts = []
+    try:
+        import winreg
+
+        for root, key in ((winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"),
+                          (winreg.HKEY_CURRENT_USER, "Environment")):
+            try:
+                with winreg.OpenKey(root, key) as k:
+                    parts.append(os.path.expandvars(winreg.QueryValueEx(k, "Path")[0]))
+            except OSError:
+                pass
+    except ImportError:
+        pass
     extra = [str(Path.home() / ".local" / "bin")]
     if os.environ.get("APPDATA"):
         extra.append(str(Path(os.environ["APPDATA"]) / "npm"))
-    os.environ["PATH"] = os.environ.get("PATH", "") + os.pathsep + os.pathsep.join(extra)
+    os.environ["PATH"] = os.pathsep.join([os.environ.get("PATH", "")] + parts + extra)
+
+
+def install_cli(name: str, script_url: str, found) -> bool:
+    """Installerer Claude Code eller Codex med udbyderens officielle installationsscript (kun Windows).
+    Prøver igen efter en pause (antivirus kan låse den nye fil), og Codex også med npm."""
+    for attempt in range(2):
+        if attempt:
+            print("  Prøver igen om 15 sekunder ...")
+            _time.sleep(15)
+        staging = Path.home() / ".codex" / "packages" / "standalone" / "releases"
+        for d in staging.glob(".staging.*") if staging.is_dir() else []:
+            shutil.rmtree(d, ignore_errors=True)
+        print(f"  Installerer {name} ...")
+        subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", f"irm {script_url} | iex"])
+        refresh_path()
+        if found():
+            return True
+    npm = shutil.which("npm")
+    if name == "Codex" and npm:
+        print("  Prøver at installere Codex med npm ...")
+        subprocess.run([npm, "install", "-g", "@openai/codex@latest"])
+        refresh_path()
+    if found():
+        return True
+    print(f"  {name} kunne ikke installeres. Tjek i Windows-sikkerhed > Beskyttelseshistorik, om programmet er")
+    print("  blokeret, og kør Opsætning igen.")
+    return False
 
 
 def setup_ai(cfg: dict, force_api: bool = False, provider: str | None = None) -> None:
@@ -2392,7 +2429,7 @@ def setup_claude(cfg: dict, force_api: bool = False, has_code: bool | None = Non
         return
     if not force_api and not has_code and not keep_api and sys.platform == "win32" and ask_yes(
             "  Claude Code er ikke installeret. Har du et Claude-abonnement (Pro eller Max), og skal den installeres nu?", True):
-        install_cli("Claude Code", "https://claude.ai/install.ps1")
+        install_cli("Claude Code", "https://claude.ai/install.ps1", lambda: find_claude(cfg))
         exe = find_claude(cfg)
         if exe:
             print("  Log ind i Claude Code: svar på spørgsmålene (Enter er fint), log ind i browseren,")
@@ -2402,7 +2439,10 @@ def setup_claude(cfg: dict, force_api: bool = False, has_code: bool | None = Non
             set_mode(cfg, "claude-code")
             print("  OK: bruger Claude Code på denne computer (dit Claude-abonnement).")
             return
-        print("  Claude Code kunne ikke installeres.")
+        if not ask_yes("  Vil du bruge en Claude API-nøgle i stedet?", False):
+            set_mode(cfg, "claude-code")
+            print("  Agenten er sat til Claude Code. Kør Opsætning igen, når den er installeret.")
+            return
     if not force_api and not has_code and not keep_api:
         print("  Agenten bruger en API-nøgle fra Anthropic.")
     set_mode(cfg, "api")
@@ -2475,10 +2515,12 @@ def setup_openai(cfg: dict, force_api: bool = False, has_codex: bool | None = No
             return
     elif not force_api and not has_codex and not keep_api and sys.platform == "win32" and ask_yes(
             "  Codex er ikke installeret. Har du et ChatGPT-abonnement, og skal Codex installeres nu?", True):
-        install_cli("Codex", "https://chatgpt.com/codex/install.ps1")
-        if find_codex(cfg):
+        if install_cli("Codex", "https://chatgpt.com/codex/install.ps1", lambda: find_codex(cfg)):
             return setup_openai(cfg, False, True)
-        print("  Codex kunne ikke installeres.")
+        if not ask_yes("  Vil du bruge en OpenAI API-nøgle i stedet?", False):
+            set_mode(cfg, "codex")
+            print("  Agenten er sat til Codex. Kør Opsætning igen, når Codex er installeret.")
+            return
     if not force_api and not has_codex and not keep_api:
         print("  Agenten bruger en API-nøgle fra OpenAI.")
     set_mode(cfg, "openai-api")

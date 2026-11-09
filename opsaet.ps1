@@ -94,13 +94,28 @@ function Installer-Claude {
     Ok "Claude Code er klar"
 }
 function Installer-Codex {
-    if (-not (Find-Codex)) {
+    # OpenAIs installationsprogram kan fejle, hvis antivirus låser den nye fil et øjeblik.
+    # Derfor: ryd rester, vent og prøv igen, og brug npm som reserve.
+    $releases = Join-Path $HOME ".codex\packages\standalone\releases"
+    for ($forsoeg = 1; $forsoeg -le 2 -and -not (Find-Codex); $forsoeg++) {
+        if ($forsoeg -gt 1) {
+            Write-Host "  Prøver igen om 15 sekunder ..." -ForegroundColor Yellow
+            Start-Sleep -Seconds 15
+        }
+        Get-ChildItem $releases -Directory -Filter ".staging.*" -Force -ErrorAction SilentlyContinue |
+            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
         powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://chatgpt.com/codex/install.ps1 | iex"
+        Opdater-Sti
+    }
+    if (-not (Find-Codex) -and (Get-Command npm -ErrorAction SilentlyContinue)) {
+        Write-Host "  Prøver at installere Codex med npm ..." -ForegroundColor Yellow
+        npm install -g @openai/codex@latest
         Opdater-Sti
     }
     $codex = Find-Codex
     if (-not $codex) {
-        Write-Host "  Codex kunne ikke installeres. Du kan bruge en OpenAI API-nøgle i stedet." -ForegroundColor Yellow
+        Write-Host "  Codex kunne ikke installeres. Tjek i Windows-sikkerhed > Beskyttelseshistorik, om codex.exe" -ForegroundColor Yellow
+        Write-Host "  er blokeret, og kør Opsætning igen. Ellers kan du vælge en API-nøgle i næste trin." -ForegroundColor Yellow
         return
     }
     Ok "Codex installeret"
@@ -143,15 +158,15 @@ if (-not $mode) {
     Write-Host "  fra Aula, også fra andre forældre og om andre børn, til den AI, du vælger."
     Write-Host "  Hvilket abonnement har du?"
     Write-Host "   1. Claude (Pro eller Max): bruger Claude Code. Det koster ikke ekstra."
-    Write-Host "      Data: sendes til Anthropic. Om det bruges til træning, afhænger af dine"
-    Write-Host "      privatlivsindstillinger i Claude."
+    Write-Host "      Data: sendes til Anthropic og opbevares i 30 dage. Har du tilladt træning i Claudes"
+    Write-Host "      privatlivsindstillinger, bruges det til træning og opbevares op til 5 år."
     Write-Host "   2. ChatGPT (Plus, Pro, Go eller Free): bruger Codex. Det koster ikke ekstra, men der er"
     Write-Host "      forbrugsgrænser. Med Go og Free bruges en mindre model, som overser flere ting."
-    Write-Host "      Data: sendes til OpenAI og bruges til træning, medmindre du slår 'Gør modellen"
-    Write-Host "      bedre for alle' fra i ChatGPT (Indstillinger > Datastyring)."
+    Write-Host "      Data: sendes til OpenAI og opbevares efter din ChatGPT-kontos vilkår. Det bruges til"
+    Write-Host "      træning, medmindre du slår 'Gør modellen bedre for alle' fra (Indstillinger > Datastyring)."
     Write-Host "   3. Ingen af dem: du bruger en API-nøgle og betaler pr. kørsel (ca. 2-10 kr. om måneden)."
-    Write-Host "      Data: sendes til Anthropic eller OpenAI og bruges ikke til træning."
-    Write-Host "  Uanset valg kan udbyderen opbevare data i en periode efter sine vilkår. Se README."
+    Write-Host "      Data: sendes til Anthropic eller OpenAI, bruges ikke til træning og slettes efter højst 30 dage."
+    Write-Host "  Ved mistanke om misbrug eller krav i loven kan udbyderne opbevare data længere. Se README."
     $standard = if ((Find-Codex) -and -not (Find-Claude)) { "2" } else { "1" }
     $svar = Read-Host "  Vælg 1, 2 eller 3 [$standard]"
     if (-not $svar) { $svar = $standard }
