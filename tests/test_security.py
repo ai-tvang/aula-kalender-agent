@@ -121,6 +121,8 @@ check("Codex: læse-profil med forbud", cval("default_permissions=") == ["defaul
       and cval("permissions.aula.extends=") == ['permissions.aula.extends=":read-only"'])
 deny = cval("permissions.aula.filesystem=")[0]
 check("Codex: agent-mappen er forbudt", json.dumps(agent.BASE.as_posix()) + '="deny"' in deny)
+check("Codex: hele brugermappen er forbudt, kun arbejdsmappen må læses",
+      json.dumps(Path.home().as_posix()) + '="deny"' in deny and '":workspace_roots"={"."="read"}' in deny)
 check("Codex: ingen netværk, ingen websøgning, ingen godkendelser",
       cval("permissions.aula.network=") == ["permissions.aula.network={enabled=false}"]
       and cval("web_search=") == ["web_search=disabled"] and cval("approval_policy=") == ["approval_policy=never"])
@@ -152,7 +154,13 @@ try:
     agent.run_codex({"openai_model": "x"}, "p", rd); msg = ""
 except RuntimeError as e:
     msg = str(e)
-check("Codex: svag sandkasse stopper kørslen med vejledning", "codex sandbox setup --elevated" in msg)
+check("Codex: svag sandkasse stopper kørslen med vejledning", "Opsætning" in msg and "sandkasse" in msg)
+CODEX_REPLIES = [(1, "", "windows sandbox failed: runner failed during SpawnChild: CreateProcessAsUserW failed")]
+try:
+    agent.run_codex({"openai_model": "x"}, "p", rd); ok = False
+except agent.CodexSandboxError:
+    ok = True
+check("Codex: andre sandkassefejl stopper også kørslen", ok)
 CODEX_REPLIES = [(1, '{"type":"error","message":"Not logged in. Run codex login"}', "")]
 try:
     agent.run_codex({"openai_model": "x"}, "p", rd); ok = False
@@ -165,6 +173,12 @@ try:
 except RuntimeError as e:
     msg = str(e)
 check("Codex: for gammel version afvises", "for gammel" in msg)
+agent.subprocess.run = lambda args, **kw: N(returncode=1, stdout="", stderr="noget gik galt")
+try:
+    agent.run_codex({}, "p", rd); msg = ""
+except RuntimeError as e:
+    msg = str(e)
+check("Codex: ukendt version afvises (fejl lukket)", "ukendt version" in msg)
 
 # 5c. OpenAI-nøgle krypteres som Anthropic-nøglen
 cfg = {"openai_api_key": "sk-proj-klar", "ai_mode": "openai-api"}

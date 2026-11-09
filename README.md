@@ -42,7 +42,7 @@ Hver uge (som standard søndag kl. 7):
 - **En personlig Outlook-konto** (@outlook.com, @hotmail.com, @live.dk). Arbejdskonti blokerer ofte for den slags adgang. Outlook-appen skal ikke være installeret; agenten logger selv ind.
 - **Adgang til Claude eller ChatGPT** på én af fire måder. Installationen spørger, hvilket abonnement du har:
   - **Claude Code (anbefalet)** med et betalt Claude-abonnement (Pro eller Max). Kørslerne tæller med i dit almindelige forbrug og koster ikke ekstra. Claude-appen er ikke nok, men installationen installerer Claude Code for dig, og du logger ind én gang undervejs.
-  - **Codex** med et ChatGPT-abonnement (Plus, Pro, Go eller Free). Kørslerne tæller i dit abonnement og koster ikke ekstra. ChatGPT-appen er ikke nok, men installationen installerer Codex (OpenAIs program til kommandolinjen) for dig, og du logger ind med din ChatGPT-konto én gang. Se [Kvalitet med ChatGPT](#kvalitet-med-chatgpt).
+  - **Codex** med et ChatGPT-abonnement (Plus, Pro, Go eller Free). Codex følger med abonnementet, og kørslerne bruger af den Codex-kvote, abonnementet giver. Du betaler ikke ekstra, men der er forbrugsgrænser, som afhænger af abonnementet. ChatGPT-appen er ikke nok, men installationen installerer Codex (OpenAIs program til kommandolinjen) for dig, og du logger ind med din ChatGPT-konto én gang. Se [Kvalitet med ChatGPT](#kvalitet-med-chatgpt).
   - **Claude API-nøgle** fra [console.anthropic.com](https://console.anthropic.com/settings/keys). Du betaler pr. kørsel, i dag omkring 6-10 kr. om måneden med Opus (se [Pris](#pris)). Kræver betalingskort og lidt kredit.
   - **OpenAI API-nøgle** fra [platform.openai.com](https://platform.openai.com/api-keys). Du betaler pr. kørsel. Et ChatGPT-abonnement giver ikke API-adgang; den betales for sig. Kræver betalingskort og lidt kredit.
 - **MitID-appen** og adgang til Aula som forælder.
@@ -107,9 +107,9 @@ Du kan indsætte linket til denne side i Claude eller ChatGPT og skrive fx "Hjæ
 | "Python 3.14 kunne ikke installeres" | Installer Python 3.14 fra [python.org](https://www.python.org/downloads/windows/), og kør linjen igen. |
 | `claude` findes ikke, eller Claude Code beder om login under kørslen | Åbn et nyt PowerShell-vindue, kør `claude`, log ind og skriv `/exit`. Kør derefter **Opsætning** fra Start-menuen (eller linjen igen). |
 | Du har ikke et Claude-abonnement | Vælg ChatGPT, hvis du har et ChatGPT-abonnement, ellers en API-nøgle (se [Det skal du have](#det-skal-du-have)). |
-| `codex` findes ikke, eller ugemailen siger, at ChatGPT ikke kunne logge ind | Åbn et nyt PowerShell-vindue, kør `codex login`, og log ind med din ChatGPT-konto. Kør derefter **Kør nu** fra Start-menuen. |
-| "Codex kunne ikke starte sin sikre sandkasse" | Åbn PowerShell, kør `codex sandbox setup --elevated --current-user`, og godkend som administrator. Agenten kører ikke Codex uden sandkassen, så den ikke kan læse dine login-filer. |
-| "Codex CLI er for gammel" | Kør `npm install -g @openai/codex@latest`, eller installationslinjen fra chatgpt.com igen. Kør derefter **Kør nu**. |
+| Ugemailen siger, at ChatGPT ikke kunne logge ind | Kør **Opsætning** fra Start-menuen, og sig ja til at logge ind i Codex. Kør derefter **Kør nu**. (Avanceret: `codex login` i PowerShell.) |
+| "Codex kunne ikke starte sin sikre sandkasse" | Kør **Opsætning** fra Start-menuen, og sig ja til at sætte sandkassen op. Windows beder om administrator-godkendelse. Agenten kører ikke Codex uden sandkassen. (Avanceret: `codex sandbox setup --elevated --current-user`.) |
+| "Codex CLI er for gammel" | Kør **Opsætning** fra Start-menuen, og sig ja til at opdatere Codex. (Avanceret: `npm install -g @openai/codex@latest`.) |
 | MitID spørger, om du vil logge ind som privatperson eller et firma | Vælg dig selv som privatperson. |
 | "Codes read. Approve the login in your MitID app." | Teksten er på engelsk, men betyder bare: godkend i MitID-appen. |
 | Outlook-login: kode og microsoft.com/link | Åbn microsoft.com/link i browseren, skriv koden, log ind med din personlige Outlook-konto og godkend. Vinduet fortsætter selv. |
@@ -211,7 +211,7 @@ Med Claude API-nøgle betaler du for det, Claude læser. Det afhænger af, hvor 
 
 Det giver omkring 6-10 kr. om måneden. Med `"claude_model": "claude-sonnet-5-5"` i config.json bliver det cirka det halve, men Sonnet overser flere ting. Agenten skriver den faktiske pris for hver kørsel i `logs\agent.log` og i `runs\<tidspunkt>\ai_usage.json`. Du kan sætte en månedlig grænse på console.anthropic.com under Limits, så du aldrig bliver overrasket.
 
-Med Codex (ChatGPT-abonnement) koster agenten intet ekstra. Én kørsel om ugen ligger langt under abonnementernes grænser.
+Med Codex (ChatGPT-abonnement) betaler du ikke ekstra; kørslen bruger af den Codex-kvote, der følger med abonnementet. Én kørsel om ugen bør ligge langt under grænserne, men de afhænger af abonnementet og OpenAIs vilkår og kan ændre sig.
 
 Med OpenAI API-nøgle afhænger prisen af modellen. Ud fra OpenAIs listepriser (november 2026) og tokenforbruget i vores test, hvor en almindelig uge brugte 40.000-70.000 tokens:
 
@@ -220,7 +220,7 @@ Med OpenAI API-nøgle afhænger prisen af modellen. Ud fra OpenAIs listepriser (
 | `gpt-6.1-sol` (standard) | ca. 0,10-0,20 dollar (1-1,50 kr.) |
 | `gpt-6-astra` | ca. 0,50-0,90 dollar (3,50-6 kr.) |
 
-Tallene er beregnet, ikke målt på rigtige kørsler med API-nøgle. Agenten skriver den anslåede pris for hver kørsel i loggen. Sæt gerne en månedlig grænse på platform.openai.com under Limits.
+Tallene er anslåede, beregnet ud fra listepriser, og ikke målt på rigtige kørsler med API-nøgle. Priser og modelnavne ændrer sig. Agenten skriver en anslået pris for hver kørsel i loggen. Sæt gerne en månedlig grænse på platform.openai.com under Limits.
 
 Lange beskedtråde (fx kontaktforældrenes) sendes ikke i deres fulde længde hver uge: AI'en får alle nye beskeder og de 30 seneste ældre som sammenhæng.
 
@@ -258,7 +258,7 @@ Søndagens ugemail siger det øverst. Ved den daglige kørsel får du en mail (e
 - **Aula:** Start-menuen > Aula-kalenderagent > **Log ind på Aula igen**, og godkend i MitID-appen. Agenten kører bagefter af sig selv.
 - **Outlook:** Start-menuen > Aula-kalenderagent > **Log ind på Outlook igen**.
 - **Claude Code:** kør `claude`, skriv `/login`, og afslut med `/exit`. Kør derefter `agent.py weekly`.
-- **Codex (ChatGPT):** kør `codex login`, og log ind med din ChatGPT-konto. Kør derefter `agent.py weekly`.
+- **Codex (ChatGPT):** kør **Opsætning** fra Start-menuen, og sig ja til at logge ind i Codex. Kør derefter **Kør nu**.
 - **API-nøgle afvist:** lav en ny nøgle på console.anthropic.com eller platform.openai.com, og ret `anthropic_api_key` eller `openai_api_key` i `config.json` (eller kør **Opsætning**).
 
 Fejler Aula eller AI'en, tager næste kørsel automatisk den mistede periode med.
@@ -288,11 +288,11 @@ Krypteringen er bundet til din Windows-bruger på netop denne computer. En kopi 
 
 - **Aula-indhold sendes til den AI, du har valgt** (Claude fra Anthropic eller ChatGPT fra OpenAI), hver uge for at blive læst. Det omfatter beskeder fra andre forældre og navne på andre børn. Vær bevidst om det, før du slår agenten til.
 - **Claude:** Med API-nøgle gælder Anthropics kommercielle vilkår; med Claude Code gælder vilkårene for dit abonnement.
-- **ChatGPT og OpenAI:** Med OpenAI API-nøgle bruges indholdet ikke til at træne modeller, og agenten beder OpenAI om ikke at gemme svarene. Med et ChatGPT-abonnement (Codex) kan OpenAI bruge indholdet til træning, medmindre du slår det fra: chatgpt.com > **Indstillinger > Datastyring > Gør modellen bedre for alle** = fra. Indstillingen gælder hele din ChatGPT-konto. OpenAIs hjælpeside nævner ikke Codex specifikt, så vi går ud fra, at den også gælder Codex.
+- **ChatGPT og OpenAI:** Indholdet behandles hos OpenAI efter OpenAIs vilkår, og OpenAI kan opbevare det i en periode, fx til misbrugsovervågning. Med OpenAI API-nøgle bruges det ikke til at træne modeller, og agenten beder om, at svarene ikke gemmes som lagrede svar i API'et. Det er ikke en garanti for, at intet opbevares. Med et ChatGPT-abonnement (Codex) kan OpenAI bruge indholdet til træning, medmindre du slår det fra: chatgpt.com > **Indstillinger > Datastyring > Gør modellen bedre for alle** = fra. Indstillingen gælder hele din ChatGPT-konto. OpenAIs hjælpeside nævner ikke Codex specifikt, så vi går ud fra, at den også gælder Codex. At slå træning fra betyder ikke, at OpenAI ikke opbevarer noget.
 - **Din MitID-adgangskode gemmes ingen steder** og sendes ikke til AI'en. Nye logins godkendes altid i MitID-appen.
 - AI'ens svar kan kun blive til aftaler i din egen kalender og en mail til dig selv. Står der instruktioner til AI'en i en besked fra en anden, kan de ikke få adgang til dine login eller sende noget til andre:
   - Med Claude Code må Claude kun læse filer i kørslens egen mappe.
-  - Med Codex kører ChatGPT i en midlertidig mappe uden for agent-mappen, i Codex' sikre Windows-sandkasse. Kommandoer, den kører, kan ikke skrive filer, har intet netværk og kan ikke læse agent-mappen, Codex' og Claudes login-mapper eller Windows' gemte legitimationsoplysninger. Agenten bruger ikke din egen Codex-opsætning, MCP-servere eller regler. Kan sandkassen ikke starte, kører agenten ikke Codex.
+  - Med Codex sender Codex-programmet Aula-indholdet til OpenAI og får svaret tilbage; det er den eneste netværkstrafik. Selve modellen kører i en midlertidig mappe uden for agent-mappen, i Codex' sikre Windows-sandkasse. Kommandoer, den forsøger at køre på computeren, kan ikke skrive filer, har intet netværk og kan ikke læse noget i din brugermappe (fx Dokumenter, Skrivebord, browserprofiler og login-filer) ud over den midlertidige mappe. Agenten slår Codex' shell, websøgning og andre værktøjer fra og bruger ikke din egen Codex-opsætning, MCP-servere eller regler. Kan sandkassen ikke starte, kører agenten ikke Codex, og den skifter aldrig til en svagere sandkasse.
   - Med API-nøgle kan AI'en kun se de billeder, agenten selv sender.
 
 ### Sådan trækker du adgangen tilbage

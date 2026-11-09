@@ -178,6 +178,10 @@ class AiLoginRequired(Exception):
 
 ClaudeLoginRequired = AiLoginRequired  # gammelt navn
 
+
+class CodexSandboxError(RuntimeError):
+    """Codex' sikre sandkasse kan ikke starte eller håndhæve læseforbuddene."""
+
 CLAUDE_AUTH_PATTERN = re.compile(
     r"Failed to authenticate|OAuth|not logged in|Please run /login|Invalid API key|authentication_error",
     re.I,
@@ -187,6 +191,9 @@ CODEX_AUTH_PATTERN = re.compile(
     r"refresh token|token (?:has )?expired|sign in again|log in again",
     re.I,
 )
+# Alle fejl om sandkassen stopper kørslen; der skiftes aldrig til en svagere sandkasse.
+CODEX_SANDBOX_PATTERN = re.compile(
+    r"sandbox|deny-read|unsandboxed|restricted.token|CreateProcessAsUser|firewall|sandbox user", re.I)
 CODEX_MODEL_PATTERN = re.compile(r"not supported when using Codex with a ChatGPT account|model_not_found", re.I)
 
 
@@ -1593,7 +1600,7 @@ def http_post(url: str, headers: dict, body: dict, name: str) -> dict:
                 raise RuntimeError(f"Kunne ikke nå {name}: {e}") from e
             _time.sleep(10 * (attempt + 1))
             continue
-        if r.status_code in (429, 500, 502, 503, 504, 529) and attempt < 4:
+        if r.status_code in (429, 500, 502, 503, 504, 529) and attempt < 4 and "insufficient_quota" not in r.text:
             try:
                 wait = float(r.headers.get("retry-after") or 0)
             except ValueError:
@@ -1790,7 +1797,17 @@ OPENAI_IMAGE_TOOL = {"type": "function", "name": "laes_billede", "description": 
 
 def openai_post(key: str, body: dict) -> dict:
     headers = {"authorization": f"Bearer {key}", "content-type": "application/json"}
-    return http_post(OPENAI_URL, headers, body, "OpenAI API")
+    try:
+        return http_post(OPENAI_URL, headers, body, "OpenAI API")
+    except RuntimeError as e:
+        msg = str(e)
+        if "insufficient_quota" in msg or "billing" in msg.lower():
+            raise RuntimeError("OpenAI-kontoen har ikke kredit nok. Fyld op på platform.openai.com under "
+                               f"Billing, og kør igen. ({msg[:200]})") from e
+        if "model_not_found" in msg or ("model" in msg.lower() and ("does not exist" in msg or "access" in msg.lower())):
+            raise RuntimeError(f"Din OpenAI-konto har ikke adgang til modellen {body.get('model')}. Ret openai_model "
+                               f"i config.json (fx gpt-6.1-sol), eller tjek kontoen på platform.openai.com. ({msg[:200]})") from e
+        raise
 
 
 def check_openai_key(key: str) -> str | None:
@@ -1855,11 +1872,15 @@ def run_openai_api(cfg: dict, prompt: str, run_dir: Path) -> str:
         usage["output_tokens"] += u.get("output_tokens") or 0
         usage["reasoning_tokens"] += (u.get("output_tokens_details") or {}).get("reasoning_tokens") or 0
         output = resp.get("output") or []
-        if resp.get("status") == "incomplete":
+        status = resp.get("status") or "completed"
+        if status == "incomplete":
             reason = (resp.get("incomplete_details") or {}).get("reason", "")
             if reason == "max_output_tokens":
                 raise RuntimeError("Svaret fra OpenAI blev for langt (max_output_tokens). Hæv api_max_tokens i config.json.")
             raise RuntimeError(f"OpenAI stoppede svaret før tid ({reason or 'ukendt grund'}).")
+        if status != "completed":
+            err = (resp.get("error") or {}).get("message") or status
+            raise RuntimeError(f"OpenAI gennemførte ikke svaret ({status}): {err}")
         text = "".join(
             part.get("text", "")
             for item in output if item.get("type") == "message"
@@ -1878,6 +1899,8 @@ def run_openai_api(cfg: dict, prompt: str, run_dir: Path) -> str:
             images += isinstance(img, list)
             items.append({"type": "function_call_output", "call_id": call.get("call_id"), "output": img})
 
+    if not text.strip():
+        raise RuntimeError("OpenAI gav intet endeligt svar, så opslag og beskeder blev ikke gennemgået.")
     cost = openai_cost(model, usage)
     save_json(run_dir / "ai_usage.json", {"mode": "openai-api", "model": model, "turns": turn, "images": images,
                                            "usage": usage, "estimated_usd": cost})
@@ -1921,7 +1944,7 @@ def codex_version(exe: str) -> tuple[int, ...] | None:
         res = subprocess.run([exe, "--version"], capture_output=True, text=True, encoding="utf-8", timeout=60)
     except (OSError, subprocess.SubprocessError):
         return None
-    m = re.search(r"(\d+)\.(\d+)\.(\d+)", res.stdout or "")
+    m = re.search(r"(\d+)\.(\d+)\.(\d+)", (res.stdout or "") + (res.stderr or ""))
     return tuple(int(x) for x in m.groups()) if m else None
 
 
@@ -1930,23 +1953,19 @@ def codex_home() -> Path:
 
 
 def codex_deny_paths() -> list[Path]:
-    """Mapper, som Codex' kommandoer ikke må læse: agentens login, Codex' og Claudes login og
-    andre typiske steder med nøgler. Hele brugermappen kunne også nægtes, men det gør hver
-    kørsel 1-2 minutter langsommere på Windows."""
+    """Mapper, som Codex' kommandoer ikke må læse: hele brugermappen (dokumenter, browserprofiler,
+    login) og agent-mappen og Codex' login, hvis de ligger et andet sted. Kun Codex' egen
+    arbejdsmappe er undtaget (se codex_args). En profil, der kun tillader arbejdsmappen, afvises af
+    Windows-sandkassen, så resten af disken er læsbar, men uden adgang til netværk og skrivning.
+    Testet på Windows 11 med Codex 0.167: kørslen bliver ikke mærkbart langsommere."""
     home = Path.home()
-    paths = [BASE, codex_home(), home / ".claude", home / ".config", home / ".ssh", home / ".aws",
-             home / ".azure", home / ".docker", home / ".gnupg"]
-    if os.environ.get("APPDATA"):
-        paths.append(Path(os.environ["APPDATA"]) / "Microsoft" / "Credentials")
-    if os.environ.get("LOCALAPPDATA"):
-        paths.append(Path(os.environ["LOCALAPPDATA"]) / "Microsoft" / "Credentials")
-    out, seen = [], set()
-    for p in paths:
-        key = str(p).lower()
-        if key not in seen and p.exists():
-            seen.add(key)
-            out.append(p)
-    return out
+    paths = [home]
+    for p in (BASE, codex_home()):
+        try:
+            p.resolve().relative_to(home.resolve())
+        except ValueError:
+            paths.append(p)
+    return [p for p in paths if p.exists()]
 
 
 def _toml_str(s: str) -> str:
@@ -1958,7 +1977,10 @@ def codex_args(cfg: dict, exe: str, work: Path, out_file: Path, model: str | Non
     """Kommandolinjen til codex exec. Kommandoer, Codex kører, må kun læse (ikke skrive), har intet
     netværk og kan ikke læse de mapper, codex_deny_paths() nævner. Brugerens egen Codex-opsætning,
     MCP-servere og regler indlæses ikke."""
-    deny = ",".join(f"{_toml_str(p.as_posix())}={_toml_str('deny')}" for p in codex_deny_paths())
+    rules = [f"{_toml_str(p.as_posix())}={_toml_str('deny')}" for p in codex_deny_paths()]
+    # Arbejdsmappen ligger i %TEMP% under brugermappen. Den mere specifikke regel vinder.
+    rules.append('":workspace_roots"={"."="read"}')
+    deny = ",".join(rules)
     args = [
         exe, "exec", "--json", "--ephemeral", "--skip-git-repo-check",
         "--ignore-user-config", "--ignore-rules",
@@ -2029,9 +2051,12 @@ def run_codex(cfg: dict, prompt: str, run_dir: Path, images: list[str] | None = 
             "npm install -g @openai/codex"
         )
     version = codex_version(exe)
-    if version and version < MIN_CODEX_VERSION:
+    if version is None or version < MIN_CODEX_VERSION:
+        found = ".".join(map(str, version)) if version else "ukendt version"
         raise RuntimeError(
-            f"Codex CLI er for gammel ({'.'.join(map(str, version))}). Opdater med: npm install -g @openai/codex@latest"
+            f"Codex CLI er for gammel eller kan ikke læses ({found}, kræver mindst "
+            f"{'.'.join(map(str, MIN_CODEX_VERSION))}). Kør Opsætning fra Start-menuen, "
+            "eller opdater med: npm install -g @openai/codex@latest"
         )
     work = Path(tempfile.mkdtemp(prefix="aula-codex-"))
     try:
@@ -2055,11 +2080,11 @@ def run_codex(cfg: dict, prompt: str, run_dir: Path, images: list[str] | None = 
                 continue
             if CODEX_AUTH_PATTERN.search(out):
                 raise AiLoginRequired(out.strip()[-300:])
-            if "deny-read" in out or "unsandboxed" in out:
-                raise RuntimeError(
+            if CODEX_SANDBOX_PATTERN.search(out):
+                raise CodexSandboxError(
                     "Codex kunne ikke starte sin sikre sandkasse, så kørslen blev stoppet for at beskytte dine "
-                    "login-filer. Åbn PowerShell og kør: codex sandbox setup --elevated --current-user "
-                    "(kræver godkendelse som administrator). Detaljer: " + out.strip()[-300:]
+                    "filer. Kør Opsætning fra Start-menuen, og sig ja til at sætte sandkassen op (Windows beder "
+                    "om administrator-godkendelse). Detaljer: " + out.strip()[-300:]
                 )
             raise RuntimeError(f"Codex fejlede ({res.returncode}): {out.strip()[-800:]}")
         text = out_file.read_text(encoding="utf-8")
@@ -2128,7 +2153,12 @@ def run_ai(cfg: dict, payload: dict, run_dir: Path) -> dict:
         text = run_claude_code(cfg, prompt, run_dir)
     m = re.search(r"```json\s*(\{.*\})\s*```", text, re.S)
     raw = m.group(1) if m else text[text.find("{"): text.rfind("}") + 1]
-    result = json.loads(raw)
+    try:
+        result = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"{ai_name(cfg)} svarede ikke med gyldig JSON ({e}). Svaret står i ai_output.txt i kørslens mappe.") from e
+    if not isinstance(result, dict):
+        raise RuntimeError(f"{ai_name(cfg)} svarede ikke i det forventede format.")
     save_json(run_dir / "ai_result.json", result)
     return result
 
@@ -2369,7 +2399,9 @@ def codex_selftest(cfg: dict) -> tuple[str | None, str]:
         model = load_json(run_dir / "ai_usage.json", {}).get("model", "")
         return None, model
     except AiLoginRequired as e:
-        return f"Codex er ikke logget ind ({_short(e)}). Åbn PowerShell, kør: codex login", ""
+        return f"Codex er ikke logget ind ({_short(e)}).", ""
+    except CodexSandboxError as e:
+        return f"Codex' sikre sandkasse kan ikke starte ({_short(e)}).", ""
     except Exception as e:  # noqa: BLE001
         return _short(e), ""
     finally:
@@ -2393,6 +2425,26 @@ def setup_openai(cfg: dict, force_api: bool = False, has_codex: bool | None = No
             print("  Slå træning fra i ChatGPT: Indstillinger > Datastyring > 'Gør modellen bedre for alle'.")
             print(f"  Vil du hellere bruge en API-nøgle, så kør: {RUN} opsaet --api --ai chatgpt")
             return
+        exe = find_codex(cfg)
+        for _ in range(2):
+            if err and exe and "logget ind" in err and ask_yes("  Codex er ikke logget ind. Log ind med din ChatGPT-konto nu?", True):
+                subprocess.run([exe, "login"])
+            elif err and exe and "for gammel" in err and ask_yes("  Codex er for gammel. Opdater den nu?", True):
+                npm = shutil.which("npm")
+                if npm:
+                    subprocess.run([npm, "install", "-g", "@openai/codex@latest"])
+                else:
+                    subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+                                    "irm https://chatgpt.com/codex/install.ps1 | iex"])
+            elif err and exe and "sandkasse" in err and ask_yes(
+                    "  Codex' sikre sandkasse mangler. Sæt den op nu? Windows beder om administrator-godkendelse", True):
+                subprocess.run([exe, "sandbox", "setup", "--elevated", "--current-user"])
+            else:
+                break
+            err, model = codex_selftest(cfg)
+            if err is None:
+                print("  OK: Codex virker nu. Kør Opsætning igen, hvis du vil se modellen.")
+                return
         print(f"  Codex virker ikke endnu: {err}")
         if not ask_yes("  Vil du bruge en OpenAI API-nøgle i stedet?", False):
             print("  Agenten bruger Codex. Ret fejlen ovenfor, og kør Opsætning igen.")

@@ -63,8 +63,12 @@ function Find-Claude {
     return $null
 }
 function Find-Codex {
+    # Samme princip som find_codex i agent.py: codex i stien, ellers npm's globale mappe.
     $c = Get-Command codex -ErrorAction SilentlyContinue
     if ($c) { return $c.Source }
+    foreach ($f in @((Join-Path $env:APPDATA "npm\codex.cmd"), (Join-Path $HOME ".local\bin\codex.exe"))) {
+        if (Test-Path $f) { return $f }
+    }
     return $null
 }
 function Installer-Claude {
@@ -102,10 +106,18 @@ function Installer-Codex {
     Write-Host "   2. Log ind i browseren, der åbner. Vinduet fortsætter selv."
     Read-Host "  Tryk Enter for at logge ind" | Out-Null
     & $codex login
+    if ($LASTEXITCODE -ne 0) {
+        Stop-Med "Login i Codex blev ikke gennemført. Kør Opsætning fra Start-menuen (eller linjen) igen, og log ind med din ChatGPT-konto."
+    }
+    Ok "logget ind i Codex"
     Write-Host ""
-    Write-Host "  Codex skal have en sikker sandkasse, så ChatGPT ikke kan læse dine login-filer." -ForegroundColor Cyan
+    Write-Host "  Codex skal have en sikker sandkasse, så ChatGPT ikke kan læse dine filer." -ForegroundColor Cyan
     Write-Host "  Windows beder om godkendelse som administrator. Sig ja."
     & $codex sandbox setup --elevated --current-user
+    if ($LASTEXITCODE -ne 0) {
+        Stop-Med "Codex' sandkasse blev ikke sat op (godkendelsen blev måske afvist). Kør Opsætning igen og sig ja, eller vælg Claude eller en API-nøgle."
+    }
+    Ok "sandkassen er sat op"
     Write-Host ""
     Write-Host "  Slå træning fra i ChatGPT, så Aula-indhold ikke bruges til at træne modeller:" -ForegroundColor Cyan
     Write-Host "  chatgpt.com > Indstillinger > Datastyring > 'Gør modellen bedre for alle' = fra."

@@ -311,6 +311,32 @@ check("OpenAI: tænkning sendes med tilbage", any(i.get("type") == "reasoning" f
 use = __import__("json").loads((rdo / "ai_usage.json").read_text(encoding="utf-8"))
 check("OpenAI: svar og pris", '"calendar"' in text and use["images"] == 1 and abs(use["estimated_usd"] - (1500 * 2 + 1000 * 0.10 + 150 * 10) / 1e6) < 1e-9)
 
+# OpenAI API: fejlet svar og tomt svar giver tydelige fejl
+REPLIES[:] = [{"status": "failed", "error": {"message": "server_error"}, "output": [], "usage": {}}]
+try:
+    real.run_openai_api({"openai_api_key": "sk"}, "p", rdo); msg = ""
+except RuntimeError as e:
+    msg = str(e)
+check("OpenAI: failed-status giver fejl med årsag", "failed" in msg and "server_error" in msg)
+REPLIES[:] = [{"status": "completed", "output": [], "usage": {}}]
+try:
+    real.run_openai_api({"openai_api_key": "sk"}, "p", rdo); msg = ""
+except RuntimeError as e:
+    msg = str(e)
+check("OpenAI: intet endeligt svar giver fejl", "intet endeligt svar" in msg)
+real.httpx.post = lambda *a, **k: N(status_code=404, text='{"error":{"code":"model_not_found","message":"The model gpt-x does not exist"}}', headers={})
+try:
+    real.run_openai_api({"openai_api_key": "sk", "openai_model": "gpt-x"}, "p", rdo); msg = ""
+except RuntimeError as e:
+    msg = str(e)
+check("OpenAI: manglende modeladgang giver vejledning", "ikke adgang til modellen gpt-x" in msg)
+real.httpx.post = lambda *a, **k: N(status_code=429, text='{"error":{"code":"insufficient_quota"}}', headers={})
+try:
+    real.run_openai_api({"openai_api_key": "sk"}, "p", rdo); msg = ""
+except RuntimeError as e:
+    msg = str(e)
+check("OpenAI: manglende kredit giver vejledning uden ventetid", "kredit" in msg)
+
 # Aula-login udløbet
 async def aula_expired(c, s, w, x=None): raise real.AulaLoginRequired("x")
 real.aula_fetch = aula_expired

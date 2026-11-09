@@ -92,14 +92,33 @@ cfg5 = json.loads((work / "config.json").read_text(encoding="utf-8"))
 check("Codex: valgt efter selvtest, ingen ekstra spørgsmål", rc == 0 and cfg5["ai_mode"] == "codex" and len(prompts) == 1)
 
 # Codex virker ikke: tilbyder API-nøgle
-agent.codex_selftest = lambda c: ("Codex er ikke logget ind", "")
+# Codex ikke logget ind: Opsætning tilbyder login og tester igen
+ran = []
+agent.subprocess.run = lambda args, **kw: ran.append(args)
+results = iter([("Codex er ikke logget ind (x).", ""), (None, "standard")])
+agent.codex_selftest = lambda c: next(results)
 prompts.clear(); answers = iter(["", "j"])
+rc = agent.cmd_setup({k: v for k, v in fresh.items()}, False, "chatgpt")
+cfg7 = json.loads((work / "config.json").read_text(encoding="utf-8"))
+check("Codex uden login: logger ind fra Opsætning og bruger Codex", rc == 0 and ran == [["/bin/codex", "login"]]
+      and cfg7["ai_mode"] == "codex")
+
+# Codex' sandkasse mangler: Opsætning tilbyder at sætte den op
+ran.clear()
+results = iter([("Codex' sikre sandkasse kan ikke starte (x).", ""), (None, "gpt-6.1-sol")])
+prompts.clear(); answers = iter(["", "j"])
+rc = agent.cmd_setup({k: v for k, v in fresh.items()}, False, "chatgpt")
+check("Codex uden sandkasse: sættes op fra Opsætning", rc == 0 and ran == [["/bin/codex", "sandbox", "setup", "--elevated", "--current-user"]])
+
+agent.codex_selftest = lambda c: ("Codex er ikke logget ind", "")
+prompts.clear(); answers = iter(["", "n", "j"])
 rc = agent.cmd_setup({k: v for k, v in fresh.items()}, False, "chatgpt")
 cfg6 = json.loads((work / "config.json").read_text(encoding="utf-8"))
 check("Codex fejler: skifter til OpenAI-nøgle efter ja", rc == 0 and cfg6["ai_mode"] == "openai-api")
 
 # Gammel config med claude_mode virker stadig
 check("Gammelt felt claude_mode læses", agent.ai_mode({"claude_mode": "api"}) == "api" and agent.ai_mode({}) == "claude-code")
+check("ai_mode vinder over claude_mode", agent.ai_mode({"ai_mode": "codex", "claude_mode": "api"}) == "codex")
 
 print("\n" + ("Alle guide-tests bestået" if not fails else f"{fails} fejl"))
 sys.exit(1 if fails else 0)
