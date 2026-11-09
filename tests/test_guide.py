@@ -31,7 +31,7 @@ agent.Graph = FakeGraph
 agent.shutil.which = lambda x: "/bin/claude"
 
 prompts = []
-answers = iter(["testmitid", "4.b"])
+answers = iter(["testmitid", "4.b", ""])
 def fake_input(prompt=""):
     prompts.append(prompt); return next(answers)
 builtins.input = fake_input
@@ -39,7 +39,8 @@ builtins.input = fake_input
 rc = agent.cmd_setup(None)
 cfg = json.loads((work / "config.json").read_text(encoding="utf-8"))
 check("Guide: kører færdig", rc == 0)
-check("Guide: kun 2 spørgsmål (MitID + ukendt klasse)", len(prompts) == 2 and "MitID" in prompts[0] and "Oscar" in prompts[1])
+check("Guide: 3 spørgsmål (MitID, ukendt klasse, AI med Claude som standard)", len(prompts) == 3 and "MitID" in prompts[0]
+      and "Oscar" in prompts[1] and "Hvilken AI" in prompts[2] and "[claude," in prompts[2])
 check("Guide: navne og klasser", [(c["name"], c["class"]) for c in cfg["children"]] == [("Emma", "2.a"), ("Oscar", "4.b")])
 check("Guide: forælderens navn fra Aula", cfg["parent"]["name"] == "Testforælder Hansen" and cfg["parent"]["role"] == "forælder")
 check("Guide: kontaktforælder fundet i grupper", cfg["parent"]["contact_parent_in"] == ["2.a"])
@@ -54,10 +55,11 @@ cfg["children"][0]["name"] = "Emmy"; cfg["parent"]["role"] = "mor"; cfg["parent"
 cfg["family_notes"] = ["Note"]; cfg["notify_email"] = "anden@hotmail.com"
 (work / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
 FOUND["children"][0]["full_name"] = "Emma Hansen"
-prompts.clear(); answers = iter([""])
+prompts.clear(); answers = iter(["", ""])
 rc = agent.cmd_setup(cfg)
 cfg2 = json.loads((work / "config.json").read_text(encoding="utf-8"))
-check("Genkørsel: kun MitID-spørgsmål med Enter", rc == 0 and len(prompts) == 1 and "Enter = behold" in prompts[0])
+check("Genkørsel: MitID og AI med Enter, AI beholdes", rc == 0 and len(prompts) == 2 and "Enter = behold" in prompts[0]
+      and cfg2["ai_mode"] == "claude-code")
 check("Genkørsel: bevarer rolle, noter, mail og kontaktforælder-valg",
       cfg2["parent"]["role"] == "mor" and cfg2["family_notes"] == ["Note"] and cfg2["notify_email"] == "anden@hotmail.com"
       and cfg2["parent"]["contact_parent_in"] == [])
@@ -67,7 +69,7 @@ check("Genkørsel: Oscars klasse huskes", cfg2["children"][1]["class"] == "4.b")
 agent.shutil.which = lambda x: None
 agent.getpass.getpass = lambda prompt="": "sk-ant-test"
 agent.check_api_key = lambda k: None
-prompts.clear(); answers = iter([""])
+prompts.clear(); answers = iter(["", ""])
 rc = agent.cmd_setup(cfg2)
 cfg3 = json.loads((work / "config.json").read_text(encoding="utf-8"))
 check("Uden Claude Code: API-nøgle", cfg3["ai_mode"] == "api" and cfg3["anthropic_api_key"] == "sk-ant-test")
@@ -115,6 +117,23 @@ prompts.clear(); answers = iter(["", "n", "j"])
 rc = agent.cmd_setup({k: v for k, v in fresh.items()}, False, "chatgpt")
 cfg6 = json.loads((work / "config.json").read_text(encoding="utf-8"))
 check("Codex fejler: skifter til OpenAI-nøgle efter ja", rc == 0 and cfg6["ai_mode"] == "openai-api")
+
+# Begge installeret: man bliver spurgt og kan vælge ChatGPT; genkørsel foreslår ChatGPT og kan skifte tilbage
+agent.find_codex = lambda c: "/bin/codex"
+agent.shutil.which = lambda x: "/bin/claude"
+agent.codex_selftest = lambda c: (None, "gpt-6.1-sol")
+prompts.clear(); answers = iter(["", "chatgpt"])
+rc = agent.cmd_setup(dict(cfg5, ai_mode="claude-code"))
+cfg8 = json.loads((work / "config.json").read_text(encoding="utf-8"))
+check("Begge installeret: kan vælge ChatGPT", rc == 0 and cfg8["ai_mode"] == "codex")
+prompts.clear(); answers = iter(["", ""])
+rc = agent.cmd_setup(cfg8)
+cfg9 = json.loads((work / "config.json").read_text(encoding="utf-8"))
+check("Genkørsel: ChatGPT foreslås og beholdes med Enter", "[chatgpt," in prompts[1] and cfg9["ai_mode"] == "codex")
+prompts.clear(); answers = iter(["", "claude"])
+rc = agent.cmd_setup(cfg9)
+cfg10 = json.loads((work / "config.json").read_text(encoding="utf-8"))
+check("Genkørsel: kan skifte tilbage til Claude", cfg10["ai_mode"] == "claude-code")
 
 # Gammel config med claude_mode virker stadig
 check("Gammelt felt claude_mode læses", agent.ai_mode({"claude_mode": "api"}) == "api" and agent.ai_mode({}) == "claude-code")

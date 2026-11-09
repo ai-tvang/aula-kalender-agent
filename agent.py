@@ -2348,22 +2348,32 @@ def set_mode(cfg: dict, mode: str) -> None:
     cfg.pop("claude_mode", None)
 
 
+def install_cli(name: str, script_url: str) -> None:
+    """Installerer Claude Code eller Codex med udbyderens officielle installationsscript (kun Windows)."""
+    print(f"  Installerer {name} ...")
+    subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", f"irm {script_url} | iex"])
+    # Installationen sætter stien for nye vinduer; tilføj den også i denne proces.
+    extra = [str(Path.home() / ".local" / "bin")]
+    if os.environ.get("APPDATA"):
+        extra.append(str(Path(os.environ["APPDATA"]) / "npm"))
+    os.environ["PATH"] = os.environ.get("PATH", "") + os.pathsep + os.pathsep.join(extra)
+
+
 def setup_ai(cfg: dict, force_api: bool = False, provider: str | None = None) -> None:
-    """Vælger AI. Claude Code eller Codex bruges automatisk, hvis de er installeret."""
+    """Spørger altid, om Claude eller ChatGPT skal læse Aula (Enter = nuværende eller installerede).
+    provider er sat, når opsaet.ps1 allerede har spurgt."""
     heading("2. AI (Claude eller ChatGPT)")
-    configured = bool(cfg.get("ai_mode") or cfg.get("claude_mode"))
-    if provider is None and configured:
-        provider = "chatgpt" if is_openai(cfg) else "claude"
     has_claude = find_claude(cfg) is not None
     has_codex = find_codex(cfg) is not None
     if provider is None:
-        if has_claude:
-            provider = "claude"
-        elif has_codex:
-            provider = "chatgpt"
+        if cfg.get("ai_mode") or cfg.get("claude_mode"):
+            default = "chatgpt" if is_openai(cfg) else "claude"
         else:
-            print("  Agenten bruger en AI til at læse Aula. Det kan være Claude (Anthropic) eller ChatGPT (OpenAI).")
-            provider = ask_choice("  Hvilken bruger du? claude eller chatgpt", ["claude", "chatgpt"], "claude")
+            default = "chatgpt" if has_codex and not has_claude else "claude"
+        print("  Agenten bruger en AI til at læse Aula. Vælg den, du har abonnement på:")
+        print("  claude  = Claude (Anthropic), via Claude Code eller en API-nøgle")
+        print("  chatgpt = ChatGPT (OpenAI), via Codex eller en API-nøgle")
+        provider = ask_choice("  Hvilken AI skal læse Aula?", ["claude", "chatgpt"], default)
     if provider == "chatgpt":
         setup_openai(cfg, force_api, has_codex)
     else:
@@ -2379,8 +2389,21 @@ def setup_claude(cfg: dict, force_api: bool = False, has_code: bool | None = Non
         print("  OK: bruger Claude Code på denne computer (dit Claude-abonnement).")
         print(f"  Vil du hellere bruge en API-nøgle, så kør: {RUN} opsaet --api")
         return
-    if not force_api and not has_code and not api_key(cfg):
-        print("  Claude Code er ikke installeret, så agenten bruger en API-nøgle fra Anthropic.")
+    if not force_api and not has_code and not keep_api and sys.platform == "win32" and ask_yes(
+            "  Claude Code er ikke installeret. Har du et Claude-abonnement (Pro eller Max), og skal den installeres nu?", True):
+        install_cli("Claude Code", "https://claude.ai/install.ps1")
+        exe = find_claude(cfg)
+        if exe:
+            print("  Log ind i Claude Code: svar på spørgsmålene (Enter er fint), log ind i browseren,")
+            print("  og skriv /exit, når Claude Code er klar. Så fortsætter opsætningen.")
+            input("  Tryk Enter for at starte Claude Code")
+            subprocess.run([exe])
+            set_mode(cfg, "claude-code")
+            print("  OK: bruger Claude Code på denne computer (dit Claude-abonnement).")
+            return
+        print("  Claude Code kunne ikke installeres.")
+    if not force_api and not has_code and not keep_api:
+        print("  Agenten bruger en API-nøgle fra Anthropic.")
     set_mode(cfg, "api")
     print("  Opret en nøgle på https://console.anthropic.com/settings/keys (kræver betalingskort og")
     print("  lidt kredit, fx 5 dollar). Sæt gerne en månedlig grænse under Limits.")
@@ -2449,8 +2472,14 @@ def setup_openai(cfg: dict, force_api: bool = False, has_codex: bool | None = No
         if not ask_yes("  Vil du bruge en OpenAI API-nøgle i stedet?", False):
             print("  Agenten bruger Codex. Ret fejlen ovenfor, og kør Opsætning igen.")
             return
-    elif not force_api and not has_codex and not openai_key(cfg):
-        print("  Codex CLI er ikke installeret, så agenten bruger en API-nøgle fra OpenAI.")
+    elif not force_api and not has_codex and not keep_api and sys.platform == "win32" and ask_yes(
+            "  Codex er ikke installeret. Har du et ChatGPT-abonnement, og skal Codex installeres nu?", True):
+        install_cli("Codex", "https://chatgpt.com/codex/install.ps1")
+        if find_codex(cfg):
+            return setup_openai(cfg, False, True)
+        print("  Codex kunne ikke installeres.")
+    if not force_api and not has_codex and not keep_api:
+        print("  Agenten bruger en API-nøgle fra OpenAI.")
     set_mode(cfg, "openai-api")
     print("  Opret en nøgle på https://platform.openai.com/api-keys (kræver betalingskort og lidt")
     print("  kredit, fx 5 dollar). Et ChatGPT-abonnement giver ikke API-adgang; det betales for sig.")

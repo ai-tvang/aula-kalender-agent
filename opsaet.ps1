@@ -131,17 +131,27 @@ if (Test-Path (Join-Path $Dir "config.json")) {
     } catch {}
 }
 $aiValg = ""
-if (-not $mode -and -not (Find-Claude) -and -not (Find-Codex)) {
+$apiValg = $false
+if (-not $mode) {
+    # Ny installation: spørg altid, også hvis Claude Code eller Codex allerede findes.
     Trin "AI (Claude eller ChatGPT)"
     Write-Host "  Agenten bruger en AI til at læse Aula for dig. Hvilket abonnement har du?"
-    Write-Host "   1. Claude (Pro eller Max): Claude Code installeres. Det koster ikke ekstra."
-    Write-Host "   2. ChatGPT (Plus, Pro, Go eller Free): Codex installeres. Det koster ikke ekstra."
-    Write-Host "      Med Go og Free bruges en mindre model, som overser flere ting. Plus anbefales."
+    Write-Host "   1. Claude (Pro eller Max): bruger Claude Code. Det koster ikke ekstra."
+    Write-Host "   2. ChatGPT (Plus, Pro, Go eller Free): bruger Codex. Det koster ikke ekstra, men der er"
+    Write-Host "      forbrugsgrænser. Med Go og Free bruges en mindre model, som overser flere ting."
     Write-Host "   3. Ingen af dem: du bruger en API-nøgle og betaler pr. kørsel (ca. 2-10 kr. om måneden)."
-    $svar = Read-Host "  Vælg 1, 2 eller 3 [1]"
-    if ($svar -eq "2") { $aiValg = "chatgpt"; Installer-Codex }
-    elseif ($svar -eq "3") { $aiValg = "" }
-    else { $aiValg = "claude"; Installer-Claude }
+    $standard = if ((Find-Codex) -and -not (Find-Claude)) { "2" } else { "1" }
+    $svar = Read-Host "  Vælg 1, 2 eller 3 [$standard]"
+    if (-not $svar) { $svar = $standard }
+    if ($svar -eq "2") {
+        $aiValg = "chatgpt"
+        if (Find-Codex) { Ok "Codex er allerede installeret" } else { Installer-Codex }
+    } elseif ($svar -eq "3") {
+        $apiValg = $true
+    } else {
+        $aiValg = "claude"
+        if (Find-Claude) { Ok "Claude Code er allerede installeret" } else { Installer-Claude }
+    }
 } elseif ($mode -eq "codex" -and -not (Find-Codex)) {
     Trin "ChatGPT (Codex)"
     $aiValg = "chatgpt"
@@ -154,7 +164,8 @@ if ($LASTEXITCODE -ne 0) { Stop-Med "Kunne ikke hente agentens pakker. Tjek inte
 Ok "pakker hentet"
 
 # 5. Guiden: MitID, AI og Outlook. Børn, klasser og mailadresse findes automatisk.
-if ($aiValg) { uv run --python-preference only-system agent.py opsaet --ai $aiValg }
+if ($apiValg) { uv run --python-preference only-system agent.py opsaet --api }
+elseif ($aiValg) { uv run --python-preference only-system agent.py opsaet --ai $aiValg }
 else { uv run --python-preference only-system agent.py opsaet }
 if ($LASTEXITCODE -ne 0) { Stop-Med "Opsætningen blev ikke færdig. Kør scriptet igen; det, der er gemt, bliver genbrugt." }
 }
