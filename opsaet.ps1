@@ -250,7 +250,10 @@ if ($KunGenveje) {
 Trin "Første kørsel (læser de sidste 30 dage, tager 2-5 minutter)"
 if ($Test) { uv run --python-preference only-system agent.py weekly --days 30 --dry-run }
 else { uv run --python-preference only-system agent.py weekly --days 30 }
-if ($LASTEXITCODE -eq 0) {
+if ($Test -and $LASTEXITCODE -eq 0) {
+    Write-Host ""
+    Write-Host "Testen er færdig. Intet er skrevet i kalenderen eller sendt. Ugemailen ligger i runs-mappen." -ForegroundColor Green
+} elseif ($LASTEXITCODE -eq 0) {
     Write-Host ""
     Write-Host "Opsætningen er færdig. Tjek din mail og kalenderen 'Skole og fritid' i Outlook." -ForegroundColor Green
 } else {
@@ -258,5 +261,5 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "Opsætningen er færdig, men første kørsel gav en fejl. Se ugemailen eller logs\agent.log." -ForegroundColor Yellow
 }
 }
-Write-Host "Senere finder du agenten i Start-menuen under 'Aula-kalenderagent'."
+if (-not $Test) { Write-Host "Senere finder du agenten i Start-menuen under 'Aula-kalenderagent'." }
 if ($Pause) { Read-Host "Tryk Enter for at lukke" | Out-Null }

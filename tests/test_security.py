@@ -180,6 +180,21 @@ except RuntimeError as e:
     msg = str(e)
 check("Codex: ukendt version afvises (fejl lukket)", "ukendt version" in msg)
 
+# 5b2. Sandkassetest uden model: arbejdsmappen må læses, agent-mappen ikke
+seen_sb = {}
+def sandbox_run(out):
+    def run(args, **kw):
+        seen_sb["args"] = args
+        return N(returncode=1, stdout=out, stderr="")
+    return run
+agent.subprocess.run = sandbox_run("INDE-OK\nAdgang nægtet")
+check("Sandkassetest: bestået, når kun arbejdsmappen kan læses", agent.codex_sandbox_check({}) is None
+      and seen_sb["args"][1:4] == ["sandbox", "-P", "aula"] and not (agent.BASE / ".sandkassetest.txt").exists())
+agent.subprocess.run = sandbox_run("INDE-OK\nUDE-LAEST")
+check("Sandkassetest: fejler, hvis agent-mappen kan læses", "blokerede ikke" in (agent.codex_sandbox_check({}) or ""))
+agent.subprocess.run = sandbox_run("windows sandbox failed: setup required")
+check("Sandkassetest: manglende sandkasse giver sandkasse-fejl", "sandkasse kan ikke starte" in (agent.codex_sandbox_check({}) or ""))
+
 # 5c. OpenAI-nøgle krypteres som Anthropic-nøglen
 cfg = {"openai_api_key": "sk-proj-klar", "ai_mode": "openai-api"}
 check("OpenAI-nøgle: krypteres", agent.protect_config_secrets(cfg) and cfg["openai_api_key"].startswith("DPAPI1:"))

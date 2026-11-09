@@ -1972,31 +1972,74 @@ def _toml_str(s: str) -> str:
     return json.dumps(s, ensure_ascii=False)
 
 
+def codex_profile_args() -> list[str]:
+    """Sandkasseprofilen "aula": kun læsning, intet netværk, hele brugermappen nægtet undtagen
+    Codex' arbejdsmappe, og den stærke Windows-sandkasse."""
+    rules = [f"{_toml_str(p.as_posix())}={_toml_str('deny')}" for p in codex_deny_paths()]
+    # Arbejdsmappen ligger i %TEMP% under brugermappen. Den mere specifikke regel vinder.
+    rules.append('":workspace_roots"={"."="read"}')
+    args = [
+        "-c", 'permissions.aula.extends=":read-only"',
+        "-c", f"permissions.aula.filesystem={{{','.join(rules)}}}",
+        "-c", "permissions.aula.network={enabled=false}",
+    ]
+    if sys.platform == "win32":
+        # Den stærke Windows-sandkasse. Den svage kan ikke nægte læsning, og så nægter Codex at køre.
+        args += ["-c", "windows.sandbox=elevated"]
+    return args
+
+
+def codex_sandbox_check(cfg: dict) -> str | None:
+    """Prøver sandkassen af uden model: en kommando i sandkassen skal kunne læse arbejdsmappen,
+    men ikke en fil i agent-mappen. Returnerer en fejltekst eller None.
+    (Codex starter først sandkassen, når modellen kører en kommando, så en almindelig selvtest
+    opdager ikke, at den mangler.)"""
+    import tempfile
+
+    exe = find_codex(cfg)
+    if not exe:
+        return "Codex er ikke installeret."
+    work = Path(tempfile.mkdtemp(prefix="aula-codex-sandbox-"))
+    canary = BASE / ".sandkassetest.txt"
+    try:
+        (work / "inde.txt").write_text("INDE-OK", encoding="utf-8")
+        canary.write_text("UDE-LAEST", encoding="utf-8")
+        if sys.platform == "win32":
+            cmd = ["cmd", "/c", f'type "{work / "inde.txt"}" & type "{canary}"']
+        else:
+            cmd = ["sh", "-c", f'cat "{work / "inde.txt"}"; cat "{canary}"']
+        try:
+            res = subprocess.run([exe, "sandbox", "-P", "aula", "-C", str(work), *codex_profile_args(), *cmd],
+                                 capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
+        except (OSError, subprocess.SubprocessError) as e:
+            return f"Codex' sikre sandkasse kan ikke starte ({e})."
+        out = (res.stdout or "") + (res.stderr or "")
+        if "UDE-LAEST" in out:
+            return "Codex' sandkasse blokerede ikke læsning af agent-mappen. Agenten bruger ikke Codex på denne computer."
+        if "INDE-OK" not in out:
+            return f"Codex' sikre sandkasse kan ikke starte ({out.strip()[-300:] or res.returncode})."
+        return None
+    finally:
+        canary.unlink(missing_ok=True)
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def codex_args(cfg: dict, exe: str, work: Path, out_file: Path, model: str | None,
                images: list[Path]) -> list[str]:
     """Kommandolinjen til codex exec. Kommandoer, Codex kører, må kun læse (ikke skrive), har intet
     netværk og kan ikke læse de mapper, codex_deny_paths() nævner. Brugerens egen Codex-opsætning,
     MCP-servere og regler indlæses ikke."""
-    rules = [f"{_toml_str(p.as_posix())}={_toml_str('deny')}" for p in codex_deny_paths()]
-    # Arbejdsmappen ligger i %TEMP% under brugermappen. Den mere specifikke regel vinder.
-    rules.append('":workspace_roots"={"."="read"}')
-    deny = ",".join(rules)
     args = [
         exe, "exec", "--json", "--ephemeral", "--skip-git-repo-check",
         "--ignore-user-config", "--ignore-rules",
         "-C", str(work), "-o", str(out_file),
         "-c", "default_permissions=aula",
-        "-c", 'permissions.aula.extends=":read-only"',
-        "-c", f"permissions.aula.filesystem={{{deny}}}",
-        "-c", "permissions.aula.network={enabled=false}",
+        *codex_profile_args(),
         "-c", "approval_policy=never",
         "-c", "web_search=disabled",
         "-c", "project_doc_max_bytes=0",
         "-c", f"model_reasoning_effort={cfg.get('openai_effort') or DEFAULT_OPENAI_EFFORT}",
     ]
-    if sys.platform == "win32":
-        # Den stærke Windows-sandkasse. Den svage kan ikke nægte læsning, og så nægter Codex at køre.
-        args += ["-c", "windows.sandbox=elevated"]
     for feature in ("shell_tool", "unified_exec", "multi_agent", "apps", "goals", "image_generation"):
         args += ["-c", f"features.{feature}=false"]
     if model:
@@ -2461,6 +2504,9 @@ def codex_selftest(cfg: dict) -> tuple[str | None, str]:
         if '"ok"' not in text:
             return f"uventet svar: {text[:200]}", ""
         model = load_json(run_dir / "ai_usage.json", {}).get("model", "")
+        err = codex_sandbox_check(cfg)
+        if err:
+            return err, model
         return None, model
     except AiLoginRequired as e:
         return f"Codex er ikke logget ind ({_short(e)}).", ""
