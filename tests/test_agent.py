@@ -204,7 +204,7 @@ def _fake_claude(c, p, d):
     seen_payload.update(p)
     return {"calendar": [], "weekly_mail": [], "husk": [
     {"date": "2030-11-12", "children": ["Emma"], "text": "Tur til skoven. Idræt (idrætstøj).", "source": "Ugeplan"}]}
-agent.run_claude = _fake_claude
+agent.run_ai = _fake_claude
 _unused = lambda c, p, d: {"calendar": [], "weekly_mail": [], "husk": [
     {"date": "2030-11-12", "children": ["Emma"], "text": "Tur til skoven. Idræt (idrætstøj).", "source": "Ugeplan"}]}
 state = {"events": {}}
@@ -231,12 +231,12 @@ check("Weekly: huskeliste i mailen", "Husk i ugen" in html and "Tirsdag 12/11" i
 check("Weekly: ingen fejl, last_weekly sat", rc == 0 and state.get("last_weekly"))
 
 # Claude Code: udløbet login
-cfg_cc = dict(cfg, claude_mode="claude-code")
+cfg_cc = dict(cfg, ai_mode="claude-code")
 fake_out = json.dumps({"is_error": True, "result": "OAuth session expired and could not be refreshed"})
 orig_run = subprocess.run
 agent.shutil.which = lambda x: "/bin/claude"
 agent.subprocess.run = lambda *a, **k: N(returncode=1, stdout=fake_out, stderr="")
-agent.run_claude = agent.__dict__["run_claude"]  # placeholder, genindlæses nedenfor
+agent.run_ai = agent.__dict__["run_ai"]  # placeholder, genindlæses nedenfor
 import importlib  # noqa: E402
 real = importlib.reload(agent)
 real.sync_feeds = lambda *a: {"ny": 0}; real.sync_manual = lambda *a: None
@@ -253,12 +253,89 @@ check("Claude Code-login: last_weekly ikke flyttet", rc == 1 and "last_weekly" n
 
 # API: 401
 real.httpx.post = lambda *a, **k: N(status_code=401, text="invalid x-api-key", headers={})
-cfg_api = dict(cfg, claude_mode="api", anthropic_api_key="sk-ant-test")
+cfg_api = dict(cfg, ai_mode="api", anthropic_api_key="sk-ant-test")
 g = G(); real.connect_graph = lambda c, s: g
 state = {"events": {}}
 rc = real.cmd_weekly(cfg_api, state, False, None)
 subj, html = g.mails[-1]
 check("API 401: mail med vejledning om ny nøgle", "(fejl, handling krævet)" in subj and "console.anthropic.com" in html)
+
+# OpenAI API: 401
+cfg_oa = dict(cfg, ai_mode="openai-api", openai_api_key="sk-proj-test")
+g = G(); real.connect_graph = lambda c, s: g
+rc = real.cmd_weekly(cfg_oa, {"events": {}}, False, None)
+subj, html = g.mails[-1]
+check("OpenAI 401: mail med vejledning om ny nøgle", "(fejl, handling krævet)" in subj and "platform.openai.com" in html
+      and "OpenAI kunne ikke logge ind" in html)
+
+# Codex: ikke logget ind
+real.find_codex = lambda c: "/bin/codex"
+def codex_logged_out(args, **kw):
+    if args[1:] == ["--version"]:
+        return N(returncode=0, stdout="codex-cli 0.167.0", stderr="")
+    return N(returncode=1, stdout='{"type":"error","message":"Not logged in"}', stderr="")
+real.subprocess.run = codex_logged_out
+g = G(); real.connect_graph = lambda c, s: g
+state = {"events": {}}
+rc = real.cmd_weekly(dict(cfg, ai_mode="codex"), state, False, None)
+subj, html = g.mails[-1]
+check("Codex-login: mail med codex login-vejledning", "(fejl, handling krævet)" in subj and "codex login" in html
+      and "ChatGPT kunne ikke logge ind" in html and "last_weekly" not in state)
+
+# OpenAI API: billedværktøj, ingen lagring hos OpenAI, standardmodel og pris
+from PIL import Image  # noqa: E402
+rdo = work / "runs" / "openai"; (rdo / "attachments").mkdir(parents=True)
+Image.new("RGB", (50, 50), "blue").save(rdo / "attachments" / "a.png")
+bodies = []
+REPLIES = [
+    {"status": "completed", "usage": {"input_tokens": 1000, "output_tokens": 50, "input_tokens_details": {"cached_tokens": 0}},
+     "output": [{"type": "reasoning", "id": "r1", "encrypted_content": "x"},
+                {"type": "function_call", "call_id": "c1", "name": "laes_billede", "arguments": '{"image_file": "attachments/a.png"}'}]},
+    {"status": "completed", "usage": {"input_tokens": 1500, "output_tokens": 100, "input_tokens_details": {"cached_tokens": 1000}},
+     "output": [{"type": "message", "content": [{"type": "output_text", "text": '```json\n{"calendar": []}\n```'}]}]},
+]
+def fake_post(url, headers=None, json=None, timeout=None):
+    bodies.append((url, headers, __import__("json").loads(__import__("json").dumps(json))))
+    return N(status_code=200, json=lambda: REPLIES.pop(0), headers={}, text="")
+real.httpx.post = fake_post
+text = real.run_openai_api({"openai_api_key": "sk-proj-test"}, "prompt", rdo)
+u, h, b1 = bodies[0]; _, _, b2 = bodies[1]
+check("OpenAI: Responses API med nøgle i header", u == "https://api.openai.com/v1/responses" and h["authorization"] == "Bearer sk-proj-test")
+check("OpenAI: GPT-6.1 Sol på high som standard", b1["model"] == "gpt-6.1-sol" and b1["reasoning"] == {"effort": "high"})
+check("OpenAI: gemmes ikke hos OpenAI", b1["store"] is False and "reasoning.encrypted_content" in b1["include"])
+check("OpenAI: billedværktøjet tilbydes", b1["tools"][0]["name"] == "laes_billede" and b1["tools"][0]["type"] == "function")
+out_item = b2["input"][-1]
+check("OpenAI: billedet sendes som input_image", out_item["type"] == "function_call_output" and out_item["call_id"] == "c1"
+      and out_item["output"][0]["type"] == "input_image" and out_item["output"][0]["image_url"].startswith("data:image/jpeg;base64,"))
+check("OpenAI: tænkning sendes med tilbage", any(i.get("type") == "reasoning" for i in b2["input"]))
+use = __import__("json").loads((rdo / "ai_usage.json").read_text(encoding="utf-8"))
+check("OpenAI: svar og pris", '"calendar"' in text and use["images"] == 1 and abs(use["estimated_usd"] - (1500 * 2 + 1000 * 0.10 + 150 * 10) / 1e6) < 1e-9)
+
+# OpenAI API: fejlet svar og tomt svar giver tydelige fejl
+REPLIES[:] = [{"status": "failed", "error": {"message": "server_error"}, "output": [], "usage": {}}]
+try:
+    real.run_openai_api({"openai_api_key": "sk"}, "p", rdo); msg = ""
+except RuntimeError as e:
+    msg = str(e)
+check("OpenAI: failed-status giver fejl med årsag", "failed" in msg and "server_error" in msg)
+REPLIES[:] = [{"status": "completed", "output": [], "usage": {}}]
+try:
+    real.run_openai_api({"openai_api_key": "sk"}, "p", rdo); msg = ""
+except RuntimeError as e:
+    msg = str(e)
+check("OpenAI: intet endeligt svar giver fejl", "intet endeligt svar" in msg)
+real.httpx.post = lambda *a, **k: N(status_code=404, text='{"error":{"code":"model_not_found","message":"The model gpt-x does not exist"}}', headers={})
+try:
+    real.run_openai_api({"openai_api_key": "sk", "openai_model": "gpt-x"}, "p", rdo); msg = ""
+except RuntimeError as e:
+    msg = str(e)
+check("OpenAI: manglende modeladgang giver vejledning", "ikke adgang til modellen gpt-x" in msg)
+real.httpx.post = lambda *a, **k: N(status_code=429, text='{"error":{"code":"insufficient_quota"}}', headers={})
+try:
+    real.run_openai_api({"openai_api_key": "sk"}, "p", rdo); msg = ""
+except RuntimeError as e:
+    msg = str(e)
+check("OpenAI: manglende kredit giver vejledning uden ventetid", "kredit" in msg)
 
 # Aula-login udløbet
 async def aula_expired(c, s, w, x=None): raise real.AulaLoginRequired("x")

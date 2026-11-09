@@ -13,11 +13,11 @@ Onsdag 11/11
 
 Under huskelisten står de nye aftaler og ting, du bør kigge på selv: tilbud fra klubben, usikre datoer og dage, hvor flere børn har noget samtidig.
 
-**Dine data bliver hos dig.** Agenten kører på din egen computer. Login, indstillinger og alt, den henter, ligger i agent-mappen, og login er krypteret med Windows. Intet sendes til forfatteren af agenten, og der er ingen statistik eller sporing. Ud over selve installationen taler agenten kun med Aula (og skolens ugeplansystem via Aula), din Outlook-konto og Claude (Anthropic), som læser Aula-indholdet for dig. Se [Privatliv og sikkerhed](#privatliv-og-sikkerhed).
+**Dine data bliver hos dig.** Agenten kører på din egen computer. Login, indstillinger og alt, den henter, ligger i agent-mappen, og login er krypteret med Windows. Intet sendes til forfatteren af agenten, og der er ingen statistik eller sporing. Ud over selve installationen taler agenten kun med Aula (og skolens ugeplansystem via Aula), din Outlook-konto og den AI, du vælger: Claude (Anthropic) eller ChatGPT (OpenAI), som læser Aula-indholdet for dig. Se [Privatliv og sikkerhed](#privatliv-og-sikkerhed).
 
-**Open source.** Agenten er gratis og må bruges af alle (MIT-licens). Der arbejdes på andre AI-modeller end Claude, andre kalendere (fx iPhone og Google) og andre mailtjenester. [Feedback](#feedback) er meget velkommen.
+**Open source.** Agenten er gratis og må bruges af alle (MIT-licens). Den virker med både Claude og ChatGPT. Der arbejdes på andre kalendere (fx iPhone og Google) og andre mailtjenester. [Feedback](#feedback) er meget velkommen.
 
-**Du skal bruge:** en Windows-computer, en personlig Outlook-konto (fx @outlook.com eller @hotmail.com), MitID-appen og enten et betalt Claude-abonnement eller en API-nøgle. Se [Det skal du have](#det-skal-du-have).
+**Du skal bruge:** en Windows-computer, en personlig Outlook-konto (fx @outlook.com eller @hotmail.com), MitID-appen og enten et Claude- eller ChatGPT-abonnement eller en API-nøgle. Se [Det skal du have](#det-skal-du-have).
 
 > Uofficielt projekt. Det er ikke lavet eller godkendt af Aula, KL, STIL eller Netcompany, og det bruger Aulas interne API, som kan ændre sig uden varsel.
 
@@ -26,7 +26,7 @@ Under huskelisten står de nye aftaler og ting, du bør kigge på selv: tilbud f
 Hver uge (som standard søndag kl. 7):
 
 1. Henter nye opslag og beskedtråde fra Aula siden sidste kørsel, inklusive hele tråden og vedhæftede Word-, PDF- og billedfiler.
-2. Lader Claude læse dem efter reglerne i `regler.md` og finde de bekræftede datoer.
+2. Lader AI'en (Claude eller ChatGPT) læse dem efter reglerne i `regler.md` og finde de bekræftede datoer.
 3. Henter dine kalender-links (fx Aula-kalenderen eller sportsklubben) og fletter dem ind.
 4. Opretter eller opdaterer aftaler i en separat Outlook-kalender, som standard "Skole og fritid". Den laver ikke dubletter, og flyttede datoer bliver rettet.
 5. Henter skemaet, ugeplanerne og Huskelisten for den kommende skoleuge (MinUddannelse, Meebook eller EasyIQ, alt efter hvad skolen bruger) og laver en "Husk i ugen"-liste pr. dag og barn: ture, idræt og svømning, ting der skal med (fx en opladet computer), lektier, og hvornår barnet har fri.
@@ -40,11 +40,12 @@ Hver uge (som standard søndag kl. 7):
 
 - **Windows 10 eller 11.** Det er det eneste, der er testet.
 - **En personlig Outlook-konto** (@outlook.com, @hotmail.com, @live.dk). Arbejdskonti blokerer ofte for den slags adgang. Outlook-appen skal ikke være installeret; agenten logger selv ind.
-- **Adgang til Claude** på én af to måder:
-  - **Claude Code (anbefalet)** med et betalt Claude-abonnement. Kørslerne tæller med i dit almindelige forbrug og koster ikke ekstra. Claude-appen er ikke nok, men installationen tilbyder at installere Claude Code for dig, og du logger ind én gang undervejs.
-  - **API-nøgle** fra [console.anthropic.com](https://console.anthropic.com/settings/keys), hvis du ikke har et Claude-abonnement. Du betaler pr. kørsel, i dag omkring 6-10 kr. om måneden (se [Pris](#pris)). Kræver betalingskort og lidt kredit.
-
-  Du behøver ikke bruge Claude til andet. Bruger du fx ChatGPT til hverdag, er API-nøglen den nemmeste vej.
+- **Adgang til Claude eller ChatGPT** på én af fire måder. Installationen spørger, hvilket abonnement du har:
+  - **Claude Code (anbefalet)** med et betalt Claude-abonnement (Pro eller Max). Kørslerne tæller med i dit almindelige forbrug og koster ikke ekstra. Claude-appen er ikke nok, men installationen installerer Claude Code for dig, og du logger ind én gang undervejs.
+  - **Codex** med et ChatGPT-abonnement (Plus, Pro, Go eller Free). Codex følger med abonnementet, og kørslerne bruger af den Codex-kvote, abonnementet giver. Du betaler ikke ekstra, men der er forbrugsgrænser, som afhænger af abonnementet. ChatGPT-appen er ikke nok, men installationen installerer Codex (OpenAIs program til kommandolinjen) for dig, og du logger ind med din ChatGPT-konto én gang. Se [Kvalitet med ChatGPT](#kvalitet-med-chatgpt).
+  - **Claude API-nøgle** fra [console.anthropic.com](https://console.anthropic.com/settings/keys). Du betaler pr. kørsel, i dag omkring 6-10 kr. om måneden med Opus (se [Pris](#pris)). Kræver betalingskort og lidt kredit.
+  - **OpenAI API-nøgle** fra [platform.openai.com](https://platform.openai.com/api-keys). Du betaler pr. kørsel. Et ChatGPT-abonnement giver ikke API-adgang; den betales for sig. Kræver betalingskort og lidt kredit.
+- **Dit login til Claude eller ChatGPT** (e-mail og adgangskode eller Google/Apple-login). Installationen åbner browseren og beder dig logge ind. Er du allerede logget ind på claude.ai eller chatgpt.com i browseren, går det hurtigere.
 - **MitID-appen** og adgang til Aula som forælder.
 - En computer, der **kører agenten om søndagen**. Er den i dvale, vækkes den (kræver, at vækningstimere er slået til i strømindstillingerne; på mange bærbare kun, når de er sat til strøm). Er den slukket, kører agenten, så snart du tænder den, og mailen kommer få minutter efter.
 
@@ -55,9 +56,9 @@ Hver uge (som standard søndag kl. 7):
    ```
    irm https://raw.githubusercontent.com/ai-tvang/aula-kalender-agent/main/install.ps1 | iex
    ```
-3. Følg vinduet. Det tager 10-15 minutter, og det meste er login:
+3. Følg vinduet. Det tager 10-15 minutter, og det meste er login. Hav din telefon med MitID-appen klar, og log gerne ind på claude.ai eller chatgpt.com i browseren først:
    1. **Python og uv** installeres automatisk.
-   2. **Claude Code** installeres, hvis du har et Claude-abonnement og ikke har den i forvejen. Du logger ind i browseren og skriver `/exit`, når den er klar. Uden abonnement indsætter du en API-nøgle i stedet.
+   2. **AI:** Du vælger Claude, ChatGPT eller API-nøgle. Med Claude installeres **Claude Code**; du logger ind i browseren og skriver `/exit`, når den er klar. Med ChatGPT installeres **Codex**; du logger ind med din ChatGPT-konto i browseren. På nyere Windows 11 bruger Codex Windows' indbyggede sandkasse (MXC) uden videre. På ældre Windows beder Windows én gang om administrator-godkendelse til Codex' sandkasse. Har du allerede Claude Code eller Codex, bruges det, men du bliver stadig spurgt, så du selv vælger.
    3. **MitID-brugernavn**, og godkendelse i MitID-appen. Agenten henter selv dine børn, deres skole, klasse og Aula-grupper, dit navn og om du er kontaktforælder.
    4. **Outlook-login** med en kode på microsoft.com/link. Ugemailen går til den konto, du logger ind med, og kalenderen "Skole og fritid" oprettes.
 
@@ -66,6 +67,8 @@ Hver uge (som standard søndag kl. 7):
 Agenten ligger bagefter i `C:\Users\<dig>\Aula-kalenderagent`, og i **Start-menuen > Aula-kalenderagent** finder du genvejene **Kør nu**, **Log ind på Aula igen**, **Log ind på Outlook igen**, **Opsætning** og **Åbn agent-mappen**. Du skal ikke bruge PowerShell igen.
 
 **Opdatering:** kør samme linje igen. Den finder selv din installation, også hvis du har installeret fra ZIP et andet sted, og dine indstillinger og login bevares.
+
+**Skift AI:** kør **Opsætning** fra Start-menuen, og vælg `claude`, `chatgpt` eller `api` (API-nøgle). Mangler programmet, tilbyder opsætningen at installere det.
 
 Navne, klasser, Aula-grupper og noter om familien kan rettes bagefter i `config.json`. Kør **Opsætning** fra Start-menuen for at opdatere fra Aula; det, du har rettet, bliver bevaret.
 
@@ -88,10 +91,10 @@ Har du flyttet agent-mappen, så åbn PowerShell i den nye mappe og kør `powers
 Linjen henter [install.ps1](install.ps1) fra dette repo og kører den. Du kan åbne filen og læse den først; den er kort. Den gør tre ting:
 
 1. Henter agenten som ZIP-fil fra GitHub og lægger den i `C:\Users\<dig>\Aula-kalenderagent`.
-2. Starter [opsaet.ps1](opsaet.ps1), som installerer Python (via winget fra python.org), uv (fra astral.sh) og, hvis du siger ja, Claude Code (fra claude.ai).
+2. Starter [opsaet.ps1](opsaet.ps1), som installerer Python (via winget fra python.org), uv (fra astral.sh) og, alt efter dit valg, Claude Code (fra claude.ai) eller Codex (fra chatgpt.com).
 3. Opsætningen opretter en planlagt opgave og genveje i Start-menuen.
 
-Intet sendes til forfatteren af agenten. Hvad agenten gemmer og sender til Claude, står under [Privatliv og sikkerhed](#privatliv-og-sikkerhed), og hvordan du fjerner det igen, under [Sådan trækker du adgangen tilbage](#sådan-trækker-du-adgangen-tilbage).
+Intet sendes til forfatteren af agenten. Hvad agenten gemmer og sender til AI'en, står under [Privatliv og sikkerhed](#privatliv-og-sikkerhed), og hvordan du fjerner det igen, under [Sådan trækker du adgangen tilbage](#sådan-trækker-du-adgangen-tilbage).
 
 ### Hjælp fra Claude eller ChatGPT
 
@@ -106,7 +109,10 @@ Du kan indsætte linket til denne side i Claude eller ChatGPT og skrive fx "Hjæ
 | "STOP: Din brugermappe ligger i OneDrive" | Brug den manuelle vej, og læg mappen uden for OneDrive, fx `C:\Aula-kalenderagent`. |
 | "Python 3.14 kunne ikke installeres" | Installer Python 3.14 fra [python.org](https://www.python.org/downloads/windows/), og kør linjen igen. |
 | `claude` findes ikke, eller Claude Code beder om login under kørslen | Åbn et nyt PowerShell-vindue, kør `claude`, log ind og skriv `/exit`. Kør derefter **Opsætning** fra Start-menuen (eller linjen igen). |
-| Du har ikke et Claude-abonnement | Svar nej til Claude Code, og brug en API-nøgle (se [Det skal du have](#det-skal-du-have)). |
+| Du har ikke et Claude-abonnement | Vælg ChatGPT, hvis du har et ChatGPT-abonnement, ellers en API-nøgle (se [Det skal du have](#det-skal-du-have)). |
+| Ugemailen siger, at ChatGPT ikke kunne logge ind | Kør **Opsætning** fra Start-menuen, og sig ja til at logge ind i Codex. Kør derefter **Kør nu**. (Avanceret: `codex login` i PowerShell.) |
+| "Codex kunne ikke starte sin sikre sandkasse" | Kør **Opsætning** fra Start-menuen, og sig ja til at sætte sandkassen op. På ældre Windows beder Windows om administrator-godkendelse. Agenten kører ikke Codex uden sandkassen. (Avanceret: `codex sandbox setup --elevated --current-user`.) |
+| "Codex CLI er for gammel" | Kør **Opsætning** fra Start-menuen, og sig ja til at opdatere Codex. (Avanceret: `npm install -g @openai/codex@latest`.) |
 | MitID spørger, om du vil logge ind som privatperson eller et firma | Vælg dig selv som privatperson. |
 | "Codes read. Approve the login in your MitID app." | Teksten er på engelsk, men betyder bare: godkend i MitID-appen. |
 | Outlook-login: kode og microsoft.com/link | Åbn microsoft.com/link i browseren, skriv koden, log ind med din personlige Outlook-konto og godkend. Vinduet fortsætter selv. |
@@ -141,11 +147,14 @@ Du kan også rette filen selv. Felterne:
 | `children[].aula_groups` | Gruppenavne og ord i Aula, der peger på barnet, fx "2A", "2. årgang", "B-sporet". |
 | `children[].department` | Afdeling, hvis skolen har flere. |
 | `children[].clubs` | Fritidsklub, SFO eller lignende. Tilbud derfra kommer i ugemailen. |
-| `family_notes` | Frie noter til Claude, fx "Emma går til svømning om tirsdagen". |
+| `family_notes` | Frie noter til AI'en, fx "Emma går til svømning om tirsdagen". |
 | `feeds` | Kalender-links, der flettes ind (se nedenfor). Kan være tom. |
-| `claude_mode` | `api` (API-nøgle) eller `claude-code`. |
-| `anthropic_api_key` | Din API-nøgle, hvis `claude_mode` er `api`. |
-| `claude_model` | Model, både ved API-nøgle og Claude Code. Standard `claude-opus-5-5`. `claude-sonnet-5-5` koster det halve, men overser flere ting og holder formatet dårligere. |
+| `ai_mode` | Hvilken AI der læser Aula: `claude-code`, `api` (Claude API-nøgle), `codex` (ChatGPT-abonnement) eller `openai-api` (OpenAI API-nøgle). Ældre installationer har feltet `claude_mode`, som stadig virker. |
+| `anthropic_api_key` | Din Claude API-nøgle, hvis `ai_mode` er `api`. Krypteres automatisk. |
+| `claude_model` | Claude-model, både ved API-nøgle og Claude Code. Standard `claude-opus-5-5`. `claude-sonnet-5-5` koster det halve, men overser flere ting og holder formatet dårligere. |
+| `openai_api_key` | Din OpenAI API-nøgle, hvis `ai_mode` er `openai-api`. Krypteres automatisk. |
+| `openai_model` | OpenAI-model. Tom = standard: `gpt-6.1-sol` med API-nøgle. Med Codex prøves `gpt-6.1-sol` først; giver abonnementet ikke adgang til den (Go og Free), bruges abonnementets standardmodel. Kan sættes til fx `gpt-6-astra`. |
+| `openai_effort` | Hvor grundigt OpenAI-modellen tænker: `low`, `medium`, `high` (standard), `xhigh` eller `max`. |
 | `ugeplan` | `false` slår skema, ugeplaner og huskelisten fra. Standard `true`. |
 | `keep_runs_days` | Hvor mange dage kopier af Aula-indhold gemmes i `runs` (standard 7). |
 
@@ -195,7 +204,7 @@ Noget kommer aldrig skriftligt i Aula, fx det, I aftaler på et kontaktforældre
 
 Med Claude Code koster agenten intet ekstra; kørslerne tæller i dit abonnement (én kørsel om ugen).
 
-Med API-nøgle betaler du for det, Claude læser. Det afhænger af, hvor meget skolen skriver. Beregnet med Anthropics listepriser for Opus 5.5 ud fra tokenforbruget i rigtige kørsler med to børn (november 2026):
+Med Claude API-nøgle betaler du for det, Claude læser. Det afhænger af, hvor meget skolen skriver. Beregnet med Anthropics listepriser for Opus 5.5 ud fra tokenforbruget i rigtige kørsler med to børn (november 2026):
 
 | Kørsel | Indhold | Anslået pris |
 |---|---|---|
@@ -203,11 +212,31 @@ Med API-nøgle betaler du for det, Claude læser. Det afhænger af, hvor meget s
 | Almindelig uge | nye opslag og beskeder, ugeplan og skema | ca. 0,20-0,30 dollar (1,50-2 kr.) |
 | Stille uge | kun ugeplan og skema | ca. 0,10-0,20 dollar |
 
-Det giver omkring 6-10 kr. om måneden. Med `"claude_model": "claude-sonnet-5-5"` i config.json bliver det cirka det halve, men Sonnet overser flere ting. Agenten skriver den faktiske pris for hver kørsel i `logs\agent.log` og i `runs\<tidspunkt>\claude_usage.json`. Du kan sætte en månedlig grænse på console.anthropic.com under Limits, så du aldrig bliver overrasket.
+Det giver omkring 6-10 kr. om måneden. Med `"claude_model": "claude-sonnet-5-5"` i config.json bliver det cirka det halve, men Sonnet overser flere ting. Agenten skriver den faktiske pris for hver kørsel i `logs\agent.log` og i `runs\<tidspunkt>\ai_usage.json`. Du kan sætte en månedlig grænse på console.anthropic.com under Limits, så du aldrig bliver overrasket.
 
-Lange beskedtråde (fx kontaktforældrenes) sendes ikke i deres fulde længde hver uge: Claude får alle nye beskeder og de 30 seneste ældre som sammenhæng.
+Med Codex (ChatGPT-abonnement) betaler du ikke ekstra; kørslen bruger af den Codex-kvote, der følger med abonnementet. Én kørsel om ugen bør ligge langt under grænserne, men de afhænger af abonnementet og OpenAIs vilkår og kan ændre sig.
 
-Billeder bliver skaleret ned, før de sendes, og Claude ser kun dem, reglerne i `regler.md` siger, den skal se.
+Med OpenAI API-nøgle afhænger prisen af modellen. Ud fra OpenAIs listepriser (november 2026) og tokenforbruget i vores test, hvor en almindelig uge brugte 40.000-70.000 tokens:
+
+| Model | Almindelig uge (anslået) |
+|---|---|
+| `gpt-6.1-sol` (standard) | ca. 0,10-0,20 dollar (1-1,50 kr.) |
+| `gpt-6-astra` | ca. 0,50-0,90 dollar (3,50-6 kr.) |
+
+Tallene er anslåede, beregnet ud fra listepriser, og ikke målt på rigtige kørsler med API-nøgle. Priser og modelnavne ændrer sig. Agenten skriver en anslået pris for hver kørsel i loggen. Sæt gerne en månedlig grænse på platform.openai.com under Limits.
+
+Lange beskedtråde (fx kontaktforældrenes) sendes ikke i deres fulde længde hver uge: AI'en får alle nye beskeder og de 30 seneste ældre som sammenhæng.
+
+Billeder bliver skaleret ned, før de sendes. Med API-nøgle ser AI'en kun dem, reglerne i `regler.md` siger, den skal se. Med Codex sendes billederne fra ugens opslag med fra start (højst 12).
+
+### Kvalitet med ChatGPT
+
+Agenten er udviklet og testet med Claude Opus. ChatGPT-understøttelsen er ny, og kvaliteten kan svinge:
+
+- **Med ChatGPT Go eller Free** bruger Codex en mindre model (GPT-6 Luna). Vi har sammenlignet den med Claude Opus på tre rigtige kørsler: Fri-tiderne var de samme, og huskelisten var næsten den samme. Men Luna overså flere ting i ugemailen, fx et kontaktforældremøde og dage, hvor begge børn havde noget samtidig, og satte et par punkter på det forkerte barn.
+- **Med ChatGPT Plus eller højere** bruger agenten GPT-6.1 Sol, og med API-nøgle også GPT-6.1 Sol som standard. Sol og den større GPT-6 Astra er ikke testet på rigtige kørsler endnu. I uafhængige test ligger de tæt på Claude Opus, så kvaliteten vil sandsynligvis være bedre end med Go og Free.
+
+Kig ugemailen og kalenderen igennem de første uger, og skriv gerne i [Feedback](#feedback), hvad der manglede.
 
 ## Daglig brug
 
@@ -232,15 +261,16 @@ Søndagens ugemail siger det øverst. Ved den daglige kørsel får du en mail (e
 - **Aula:** Start-menuen > Aula-kalenderagent > **Log ind på Aula igen**, og godkend i MitID-appen. Agenten kører bagefter af sig selv.
 - **Outlook:** Start-menuen > Aula-kalenderagent > **Log ind på Outlook igen**.
 - **Claude Code:** kør `claude`, skriv `/login`, og afslut med `/exit`. Kør derefter `agent.py weekly`.
-- **API-nøgle afvist:** lav en ny nøgle på console.anthropic.com og ret `anthropic_api_key` i `config.json`.
+- **Codex (ChatGPT):** kør **Opsætning** fra Start-menuen, og sig ja til at logge ind i Codex. Kør derefter **Kør nu**.
+- **API-nøgle afvist:** lav en ny nøgle på console.anthropic.com eller platform.openai.com, og ret `anthropic_api_key` eller `openai_api_key` i `config.json` (eller kør **Opsætning**).
 
-Fejler Aula eller Claude, tager næste kørsel automatisk den mistede periode med.
+Fejler Aula eller AI'en, tager næste kørsel automatisk den mistede periode med.
 
 Udløber Aula-login ofte, kan du sætte en daglig opgave op, der holder det i live: `.\opsaet.ps1 -Daglig`.
 
 ## Tilpas reglerne
 
-Alt det, Claude skal tage med eller springe over, står i `regler.md` på almindeligt dansk. Ret i filen, så passer næste kørsel til det. Lav gerne en tørkørsel bagefter.
+Alt det, AI'en skal tage med eller springe over, står i `regler.md` på almindeligt dansk. Ret i filen, så passer næste kørsel til det. Lav gerne en tørkørsel bagefter.
 
 ## Privatliv og sikkerhed
 
@@ -250,24 +280,31 @@ Alt det, Claude skal tage med eller springe over, står i `regler.md` på almind
 |---|---|---|
 | `aula_tokens.dat` | At læse dit Aula (beskeder, opslag, børnenes data). Ikke MitID, bank eller borger.dk | Krypteret med Windows (DPAPI) |
 | `graph_token_cache.dat` | At læse og skrive din kalender og sende mail fra din Outlook-konto | Krypteret med Windows (DPAPI) |
-| `config.json` | Indstillinger. Med API-nøgle også nøglen, som giver adgang til at bruge Claude på din regning | API-nøglen er krypteret med Windows (DPAPI) |
-| `runs\` | Kopier af det, Claude læste (beskeder fra andre forældre, referater) | Slettes efter 7 dage. Vedhæftede filer og billeder slettes lige efter kørslen |
+| `config.json` | Indstillinger. Med API-nøgle også nøglen, som giver adgang til at bruge Claude eller OpenAI på din regning | API-nøglen er krypteret med Windows (DPAPI) |
+| `runs\` | Kopier af det, AI'en læste (beskeder fra andre forældre, referater) | Slettes efter 7 dage. Vedhæftede filer og billeder slettes lige efter kørslen |
 
 Krypteringen er bundet til din Windows-bruger på netop denne computer. En kopi af filerne virker ikke på en anden computer eller hos en anden bruger. Den beskytter ikke mod nogen, der er logget ind som dig, eller mod skadelig software, der kører som dig. Slå derfor også **BitLocker** (Windows' diskkryptering) til, og brug en adgangskode eller PIN på din Windows-bruger.
 
 Ældre installationer med ukrypterede filer bliver krypteret automatisk ved første kørsel, og de ukrypterede filer slettes.
 
-### Det sendes til Claude
+### Det sendes til AI'en
 
-- **Aula-indhold sendes til Claude** (Anthropic) hver uge for at blive læst. Det omfatter beskeder fra andre forældre og navne på andre børn. Vær bevidst om det, før du slår agenten til. Med API-nøgle gælder Anthropics kommercielle vilkår; med Claude Code gælder vilkårene for dit abonnement.
-- **Din MitID-adgangskode gemmes ingen steder** og sendes ikke til Claude. Nye logins godkendes altid i MitID-appen.
-- Claudes svar kan kun blive til aftaler i din egen kalender og en mail til dig selv. Med Claude Code må Claude kun læse filer i kørslens egen mappe, ikke login-filerne. Står der instruktioner til Claude i en besked fra en anden, kan de derfor ikke få adgang til dine login eller sende noget til andre.
+- **Aula-indhold sendes til den AI, du har valgt** (Claude fra Anthropic eller ChatGPT fra OpenAI), hver uge for at blive læst. Det omfatter beskeder fra andre forældre og navne på andre børn. Vær bevidst om det, før du slår agenten til.
+- **Claude:** Med API-nøgle bruges indholdet ikke til træning og slettes inden for 30 dage. Med Claude Code (abonnement) opbevares det i 30 dage. Har du tilladt træning i Claudes privatlivsindstillinger (claude.ai/settings/data-privacy-controls), bruges det til træning og opbevares op til 5 år.
+- **ChatGPT og OpenAI:** Med OpenAI API-nøgle bruges indholdet ikke til træning, og det opbevares op til 30 dage i OpenAIs logs til misbrugsovervågning. Agenten beder om, at svarene ikke gemmes som lagrede svar i API'et, men det ændrer ikke de 30 dage. Med et ChatGPT-abonnement (Codex) kan OpenAI bruge indholdet til træning, medmindre du slår det fra: chatgpt.com > **Indstillinger > Datastyring > Gør modellen bedre for alle** = fra. Indstillingen gælder hele din ChatGPT-konto. OpenAIs hjælpeside nævner ikke Codex specifikt, så vi går ud fra, at den også gælder Codex. Med ChatGPT-login følger opbevaringen din ChatGPT-kontos vilkår; OpenAI angiver ikke en særskilt periode for Codex. At slå træning fra betyder ikke, at OpenAI ikke opbevarer noget.
+- **For alle udbydere:** Ved mistanke om misbrug eller krav i loven kan data opbevares længere.
+- **Din MitID-adgangskode gemmes ingen steder** og sendes ikke til AI'en. Nye logins godkendes altid i MitID-appen.
+- AI'ens svar kan kun blive til aftaler i din egen kalender og en mail til dig selv. Står der instruktioner til AI'en i en besked fra en anden, kan de ikke få adgang til dine login eller sende noget til andre:
+  - Med Claude Code må Claude kun læse filer i kørslens egen mappe.
+  - Med Codex sender Codex-programmet Aula-indholdet til OpenAI og får svaret tilbage; det er den eneste netværkstrafik. Selve modellen kører i en midlertidig mappe uden for agent-mappen, i en sikker Windows-sandkasse: MXC på nyere Windows 11, ellers Codex' egen "elevated"-sandkasse. Kommandoer, den forsøger at køre på computeren, kan ikke skrive filer, har intet netværk og kan ikke læse filer i din brugermappe (fx Dokumenter, Skrivebord, browserprofiler og login-filer) ud over den midlertidige mappe. Med den ældre sandkasse kan de se navne på mapper og filer, men ikke indholdet; med MXC heller ikke navnene. Agenten slår Codex' shell, websøgning og andre værktøjer fra og bruger ikke din egen Codex-opsætning, MCP-servere eller regler. Kan sandkassen ikke starte, kører agenten ikke Codex, og den skifter aldrig til en svagere sandkasse.
+  - Med API-nøgle kan AI'en kun se de billeder, agenten selv sender.
 
 ### Sådan trækker du adgangen tilbage
 
 - **Outlook:** account.microsoft.com > Privatliv > Apps og tjenester, fjern "Microsoft Graph Command Line Tools". Slet `graph_token_cache.dat`.
 - **Aula:** slet `aula_tokens.dat`. Login udløber også af sig selv efter noget tid.
-- **API-nøgle:** slet den på console.anthropic.com under API Keys.
+- **API-nøgle:** slet den på console.anthropic.com under API Keys eller på platform.openai.com under API keys.
+- **Codex (ChatGPT):** kør `codex logout`.
 - **Planlagt kørsel:** Opgavestyring > "Aula-kalenderagent ugentlig" > Slet.
 
 `.gitignore` sørger for, at config, login, logs og kørsler aldrig kommer med, hvis du selv lægger projektet på GitHub.
@@ -276,7 +313,7 @@ Krypteringen er bundet til din Windows-bruger på netop denne computer. En kopi 
 
 - Aulas API er uofficielt og kan holde op med at virke.
 - Outlook-adgangen bruger Microsofts offentlige app til Graph PowerShell, fordi personlige konti ikke kan oprette egne app-registreringer uden Azure. Microsoft kan ændre det. Har du din egen app-registrering, kan du sætte `graph_client_id` i config.
-- Claude kan tolke det samme lidt forskelligt fra kørsel til kørsel. Ugemailen og `runs`-mappen viser, hvad der skete.
+- AI'en kan tolke det samme lidt forskelligt fra kørsel til kørsel. Ugemailen og `runs`-mappen viser, hvad der skete.
 - Ugeplaner afhænger af, hvilket system skolen bruger, og af at læreren skriver det i ugeplanen. Kør `agent.py ugeplan` for at se, hvad agenten finder hos jer.
 - Kun testet på Windows med Outlook. Google Kalender understøttes ikke endnu.
 
@@ -287,7 +324,7 @@ Feedback er meget velkommen, så projektet kan blive så godt som muligt. Det g�
 - Andre skoler end den, agenten er bygget på. Aula, ugeplaner og grupper er sat forskelligt op fra skole til skole.
 - Hvor installationen gik i stå, eller hvor en tekst var uklar.
 - Aftaler eller husk-punkter, der manglede, eller som ikke burde være kommet med.
-- Ønsker til andre AI-modeller, kalendere og mailtjenester.
+- Erfaringer med ChatGPT, og ønsker til andre kalendere og mailtjenester.
 
 Opret et [issue](../../issues) her på GitHub, eller skriv til mig på [LinkedIn](https://www.linkedin.com/in/thomas-christian-vang-1b625828). Fjern navne og beskeder fra Aula, før du indsætter skærmbilleder eller uddrag.
 
