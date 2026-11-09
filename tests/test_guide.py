@@ -135,6 +135,24 @@ rc = agent.cmd_setup(cfg9)
 cfg10 = json.loads((work / "config.json").read_text(encoding="utf-8"))
 check("Genkørsel: kan skifte tilbage til Claude", cfg10["ai_mode"] == "claude-code")
 
+# Valget "api" i guiden: spørger om udbyder og gemmer nøglen; genkørsel foreslår api
+agent.getpass.getpass = lambda prompt="": "sk-proj-api"
+prompts.clear(); answers = iter(["", "api", "chatgpt"])
+rc = agent.cmd_setup(dict(cfg10))
+cfg11 = json.loads((work / "config.json").read_text(encoding="utf-8"))
+check("Guide: api med OpenAI-nøgle", rc == 0 and cfg11["ai_mode"] == "openai-api" and cfg11["openai_api_key"] == "sk-proj-api")
+prompts.clear(); answers = iter(["", "", ""])
+rc = agent.cmd_setup(cfg11)
+cfg12 = json.loads((work / "config.json").read_text(encoding="utf-8"))
+check("Genkørsel: api foreslås, og nøglen beholdes med Enter", "[api," in prompts[1] and cfg12["ai_mode"] == "openai-api")
+# Fra opsaet.ps1 med valg 3 (--api): kun spørgsmål om udbyder, ikke om AI igen
+prompts.clear(); answers = iter(["", "claude"])
+agent.getpass.getpass = lambda prompt="": "sk-ant-api"
+rc = agent.cmd_setup({k: v for k, v in fresh.items()}, True, None)
+cfg13 = json.loads((work / "config.json").read_text(encoding="utf-8"))
+check("opsaet.ps1 valg 3: kun 'Nøgle fra hvem?'", rc == 0 and len(prompts) == 2 and "Nøgle fra hvem" in prompts[1]
+      and cfg13["ai_mode"] == "api")
+
 # Gammel config med claude_mode virker stadig
 check("Gammelt felt claude_mode læses", agent.ai_mode({"claude_mode": "api"}) == "api" and agent.ai_mode({}) == "claude-code")
 check("ai_mode vinder over claude_mode", agent.ai_mode({"ai_mode": "codex", "claude_mode": "api"}) == "codex")

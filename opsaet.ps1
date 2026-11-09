@@ -141,6 +141,7 @@ function Installer-Codex {
     Write-Host "  Slå træning fra i ChatGPT, så Aula-indhold ikke bruges til at træne modeller:" -ForegroundColor Cyan
     Write-Host "  chatgpt.com > Indstillinger > Datastyring > 'Gør modellen bedre for alle' = fra."
     Read-Host "  Tryk Enter, når det er gjort" | Out-Null
+    $env:AULA_TRAENING_VIST = "1"
 }
 $mode = ""
 if (Test-Path (Join-Path $Dir "config.json")) {

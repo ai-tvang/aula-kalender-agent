@@ -68,7 +68,7 @@ Agenten ligger bagefter i `C:\Users\<dig>\Aula-kalenderagent`, og i **Start-menu
 
 **Opdatering:** kør samme linje igen. Den finder selv din installation, også hvis du har installeret fra ZIP et andet sted, og dine indstillinger og login bevares.
 
-**Skift mellem Claude og ChatGPT:** kør **Opsætning** fra Start-menuen, og vælg den anden. Mangler programmet, tilbyder opsætningen at installere det.
+**Skift AI:** kør **Opsætning** fra Start-menuen, og vælg `claude`, `chatgpt` eller `api` (API-nøgle). Mangler programmet, tilbyder opsætningen at installere det.
 
 Navne, klasser, Aula-grupper og noter om familien kan rettes bagefter i `config.json`. Kør **Opsætning** fra Start-menuen for at opdatere fra Aula; det, du har rettet, bliver bevaret.
 
