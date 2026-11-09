@@ -45,6 +45,7 @@ Hver uge (som standard søndag kl. 7):
   - **Codex** med et ChatGPT-abonnement (Plus, Pro, Go eller Free). Codex følger med abonnementet, og kørslerne bruger af den Codex-kvote, abonnementet giver. Du betaler ikke ekstra, men der er forbrugsgrænser, som afhænger af abonnementet. ChatGPT-appen er ikke nok, men installationen installerer Codex (OpenAIs program til kommandolinjen) for dig, og du logger ind med din ChatGPT-konto én gang. Se [Kvalitet med ChatGPT](#kvalitet-med-chatgpt).
   - **Claude API-nøgle** fra [console.anthropic.com](https://console.anthropic.com/settings/keys). Du betaler pr. kørsel, i dag omkring 6-10 kr. om måneden med Opus (se [Pris](#pris)). Kræver betalingskort og lidt kredit.
   - **OpenAI API-nøgle** fra [platform.openai.com](https://platform.openai.com/api-keys). Du betaler pr. kørsel. Et ChatGPT-abonnement giver ikke API-adgang; den betales for sig. Kræver betalingskort og lidt kredit.
+- **Dit login til Claude eller ChatGPT** (e-mail og adgangskode eller Google/Apple-login). Installationen åbner browseren og beder dig logge ind. Er du allerede logget ind på claude.ai eller chatgpt.com i browseren, går det hurtigere.
 - **MitID-appen** og adgang til Aula som forælder.
 - En computer, der **kører agenten om søndagen**. Er den i dvale, vækkes den (kræver, at vækningstimere er slået til i strømindstillingerne; på mange bærbare kun, når de er sat til strøm). Er den slukket, kører agenten, så snart du tænder den, og mailen kommer få minutter efter.
 
@@ -55,7 +56,7 @@ Hver uge (som standard søndag kl. 7):
    ```
    irm https://raw.githubusercontent.com/ai-tvang/aula-kalender-agent/main/install.ps1 | iex
    ```
-3. Følg vinduet. Det tager 10-15 minutter, og det meste er login:
+3. Følg vinduet. Det tager 10-15 minutter, og det meste er login. Hav din telefon med MitID-appen klar, og log gerne ind på claude.ai eller chatgpt.com i browseren først:
    1. **Python og uv** installeres automatisk.
    2. **AI:** Du vælger Claude, ChatGPT eller API-nøgle. Med Claude installeres **Claude Code**; du logger ind i browseren og skriver `/exit`, når den er klar. Med ChatGPT installeres **Codex**; du logger ind med din ChatGPT-konto i browseren og godkender, at Codex opretter en sikker sandkasse (Windows spørger om administrator-godkendelse). Har du allerede Claude Code eller Codex, bruges det, men du bliver stadig spurgt, så du selv vælger.
    3. **MitID-brugernavn**, og godkendelse i MitID-appen. Agenten henter selv dine børn, deres skole, klasse og Aula-grupper, dit navn og om du er kontaktforælder.
