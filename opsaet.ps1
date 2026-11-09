@@ -130,13 +130,22 @@ function Installer-Codex {
     }
     Ok "logget ind i Codex"
     Write-Host ""
-    Write-Host "  Codex skal have en sikker sandkasse, så ChatGPT ikke kan læse dine filer." -ForegroundColor Cyan
-    Write-Host "  Windows beder om godkendelse som administrator. Sig ja."
-    & $codex sandbox setup --elevated --current-user
-    if ($LASTEXITCODE -ne 0) {
-        Stop-Med "Codex' sandkasse blev ikke sat op (godkendelsen blev måske afvist). Kør Opsætning igen og sig ja, eller vælg Claude eller en API-nøgle."
+    # Codex skal have en sikker sandkasse, så ChatGPT ikke kan læse dine filer. Nyere Windows 11 har
+    # MXC, som ikke kræver noget. Ellers sættes den stærke sandkasse op med én administrator-godkendelse.
+    Push-Location $env:TEMP
+    $mxc = & $codex -c windows.sandbox=mxc sandbox --include-managed-config --permission-profile :workspace -- cmd.exe /d /c echo MXC_OK 2>$null
+    Pop-Location
+    if ("$mxc" -match "MXC_OK") {
+        Ok "Windows' indbyggede sandkasse (MXC) bruges. Den kræver ingen administrator."
+    } else {
+        Write-Host "  Codex skal have en sikker sandkasse, så ChatGPT ikke kan læse dine filer." -ForegroundColor Cyan
+        Write-Host "  Windows beder om godkendelse som administrator. Sig ja."
+        & $codex sandbox setup --elevated --current-user
+        if ($LASTEXITCODE -ne 0) {
+            Stop-Med "Codex' sandkasse blev ikke sat op (godkendelsen blev måske afvist). Kør Opsætning igen og sig ja, eller vælg Claude eller en API-nøgle."
+        }
+        Ok "sandkassen er sat op"
     }
-    Ok "sandkassen er sat op"
     Write-Host ""
     Write-Host "  Slå træning fra i ChatGPT, så Aula-indhold ikke bruges til at træne modeller:" -ForegroundColor Cyan
     Write-Host "  chatgpt.com > Indstillinger > Datastyring > 'Gør modellen bedre for alle' = fra."

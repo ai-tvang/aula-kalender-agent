@@ -58,7 +58,7 @@ Hver uge (som standard søndag kl. 7):
    ```
 3. Følg vinduet. Det tager 10-15 minutter, og det meste er login. Hav din telefon med MitID-appen klar, og log gerne ind på claude.ai eller chatgpt.com i browseren først:
    1. **Python og uv** installeres automatisk.
-   2. **AI:** Du vælger Claude, ChatGPT eller API-nøgle. Med Claude installeres **Claude Code**; du logger ind i browseren og skriver `/exit`, når den er klar. Med ChatGPT installeres **Codex**; du logger ind med din ChatGPT-konto i browseren og godkender, at Codex opretter en sikker sandkasse (Windows spørger om administrator-godkendelse). Har du allerede Claude Code eller Codex, bruges det, men du bliver stadig spurgt, så du selv vælger.
+   2. **AI:** Du vælger Claude, ChatGPT eller API-nøgle. Med Claude installeres **Claude Code**; du logger ind i browseren og skriver `/exit`, når den er klar. Med ChatGPT installeres **Codex**; du logger ind med din ChatGPT-konto i browseren. På nyere Windows 11 bruger Codex Windows' indbyggede sandkasse (MXC) uden videre. På ældre Windows beder Windows én gang om administrator-godkendelse til Codex' sandkasse. Har du allerede Claude Code eller Codex, bruges det, men du bliver stadig spurgt, så du selv vælger.
    3. **MitID-brugernavn**, og godkendelse i MitID-appen. Agenten henter selv dine børn, deres skole, klasse og Aula-grupper, dit navn og om du er kontaktforælder.
    4. **Outlook-login** med en kode på microsoft.com/link. Ugemailen går til den konto, du logger ind med, og kalenderen "Skole og fritid" oprettes.
 
@@ -111,7 +111,7 @@ Du kan indsætte linket til denne side i Claude eller ChatGPT og skrive fx "Hjæ
 | `claude` findes ikke, eller Claude Code beder om login under kørslen | Åbn et nyt PowerShell-vindue, kør `claude`, log ind og skriv `/exit`. Kør derefter **Opsætning** fra Start-menuen (eller linjen igen). |
 | Du har ikke et Claude-abonnement | Vælg ChatGPT, hvis du har et ChatGPT-abonnement, ellers en API-nøgle (se [Det skal du have](#det-skal-du-have)). |
 | Ugemailen siger, at ChatGPT ikke kunne logge ind | Kør **Opsætning** fra Start-menuen, og sig ja til at logge ind i Codex. Kør derefter **Kør nu**. (Avanceret: `codex login` i PowerShell.) |
-| "Codex kunne ikke starte sin sikre sandkasse" | Kør **Opsætning** fra Start-menuen, og sig ja til at sætte sandkassen op. Windows beder om administrator-godkendelse. Agenten kører ikke Codex uden sandkassen. (Avanceret: `codex sandbox setup --elevated --current-user`.) |
+| "Codex kunne ikke starte sin sikre sandkasse" | Kør **Opsætning** fra Start-menuen, og sig ja til at sætte sandkassen op. På ældre Windows beder Windows om administrator-godkendelse. Agenten kører ikke Codex uden sandkassen. (Avanceret: `codex sandbox setup --elevated --current-user`.) |
 | "Codex CLI er for gammel" | Kør **Opsætning** fra Start-menuen, og sig ja til at opdatere Codex. (Avanceret: `npm install -g @openai/codex@latest`.) |
 | MitID spørger, om du vil logge ind som privatperson eller et firma | Vælg dig selv som privatperson. |
 | "Codes read. Approve the login in your MitID app." | Teksten er på engelsk, men betyder bare: godkend i MitID-appen. |
@@ -296,7 +296,7 @@ Krypteringen er bundet til din Windows-bruger på netop denne computer. En kopi 
 - **Din MitID-adgangskode gemmes ingen steder** og sendes ikke til AI'en. Nye logins godkendes altid i MitID-appen.
 - AI'ens svar kan kun blive til aftaler i din egen kalender og en mail til dig selv. Står der instruktioner til AI'en i en besked fra en anden, kan de ikke få adgang til dine login eller sende noget til andre:
   - Med Claude Code må Claude kun læse filer i kørslens egen mappe.
-  - Med Codex sender Codex-programmet Aula-indholdet til OpenAI og får svaret tilbage; det er den eneste netværkstrafik. Selve modellen kører i en midlertidig mappe uden for agent-mappen, i Codex' sikre Windows-sandkasse. Kommandoer, den forsøger at køre på computeren, kan ikke skrive filer, har intet netværk og kan ikke læse noget i din brugermappe (fx Dokumenter, Skrivebord, browserprofiler og login-filer) ud over den midlertidige mappe. Agenten slår Codex' shell, websøgning og andre værktøjer fra og bruger ikke din egen Codex-opsætning, MCP-servere eller regler. Kan sandkassen ikke starte, kører agenten ikke Codex, og den skifter aldrig til en svagere sandkasse.
+  - Med Codex sender Codex-programmet Aula-indholdet til OpenAI og får svaret tilbage; det er den eneste netværkstrafik. Selve modellen kører i en midlertidig mappe uden for agent-mappen, i en sikker Windows-sandkasse: MXC på nyere Windows 11, ellers Codex' egen "elevated"-sandkasse. Kommandoer, den forsøger at køre på computeren, kan ikke skrive filer, har intet netværk og kan ikke læse filer i din brugermappe (fx Dokumenter, Skrivebord, browserprofiler og login-filer) ud over den midlertidige mappe. Med den ældre sandkasse kan de se navne på mapper og filer, men ikke indholdet; med MXC heller ikke navnene. Agenten slår Codex' shell, websøgning og andre værktøjer fra og bruger ikke din egen Codex-opsætning, MCP-servere eller regler. Kan sandkassen ikke starte, kører agenten ikke Codex, og den skifter aldrig til en svagere sandkasse.
   - Med API-nøgle kan AI'en kun se de billeder, agenten selv sender.
 
 ### Sådan trækker du adgangen tilbage

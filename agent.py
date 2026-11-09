@@ -1984,8 +1984,13 @@ def codex_profile_args() -> list[str]:
         "-c", "permissions.aula.network={enabled=false}",
     ]
     if sys.platform == "win32":
-        # Den stærke Windows-sandkasse. Den svage kan ikke nægte læsning, og så nægter Codex at køre.
-        args += ["-c", "windows.sandbox=elevated"]
+        # MXC (nyere Windows 11) kræver ingen administrator og er strengest. Findes den ikke, bruges
+        # den stærke "elevated"-sandkasse, som kræver én godkendelse som administrator. Den svage
+        # "unelevated" kan ikke nægte læsning, og så nægter Codex at køre.
+        # prefer_mxc er markeret som under udvikling i Codex 0.167; selvtesten (codex_sandbox_check)
+        # prøver derfor sandkassen af, og alle fejl stopper kørslen.
+        args += ["-c", "features.prefer_mxc=true", "-c", "suppress_unstable_features_warning=true",
+                 "-c", "windows.sandbox=elevated"]
     return args
 
 

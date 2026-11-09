@@ -126,6 +126,13 @@ check("Codex: hele brugermappen er forbudt, kun arbejdsmappen må læses",
 check("Codex: ingen netværk, ingen websøgning, ingen godkendelser",
       cval("permissions.aula.network=") == ["permissions.aula.network={enabled=false}"]
       and cval("web_search=") == ["web_search=disabled"] and cval("approval_policy=") == ["approval_policy=never"])
+check("Codex: ingen Windows-sandkasse-flag uden for Windows", "windows.sandbox=elevated" not in a)
+saved_platform = agent.sys.platform
+agent.sys.platform = "win32"
+pa = agent.codex_profile_args()
+agent.sys.platform = saved_platform
+check("Codex på Windows: MXC foretrækkes, ellers elevated", "features.prefer_mxc=true" in pa and "windows.sandbox=elevated" in pa
+      and pa.index("features.prefer_mxc=true") < pa.index("windows.sandbox=elevated"))
 check("Codex: shell og andre værktøjer slået fra", "features.shell_tool=false" in a and "features.unified_exec=false" in a)
 check("Codex: ingen farlige flag", not any(x in a for x in ("--yolo", "--dangerously-bypass-approvals-and-sandbox", "danger-full-access")))
 check("Codex: arbejdsmappe uden for agent-mappen og ryddet op bagefter",
