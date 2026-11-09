@@ -57,7 +57,7 @@ Hver uge (som standard søndag kl. 7):
    ```
 3. Følg vinduet. Det tager 10-15 minutter, og det meste er login:
    1. **Python og uv** installeres automatisk.
-   2. **AI:** Du vælger Claude, ChatGPT eller API-nøgle. Med Claude installeres **Claude Code**; du logger ind i browseren og skriver `/exit`, når den er klar. Med ChatGPT installeres **Codex**; du logger ind med din ChatGPT-konto i browseren og godkender, at Codex opretter en sikker sandkasse (Windows spørger om administrator-godkendelse). Har du allerede Claude Code eller Codex, springes trinnet over.
+   2. **AI:** Du vælger Claude, ChatGPT eller API-nøgle. Med Claude installeres **Claude Code**; du logger ind i browseren og skriver `/exit`, når den er klar. Med ChatGPT installeres **Codex**; du logger ind med din ChatGPT-konto i browseren og godkender, at Codex opretter en sikker sandkasse (Windows spørger om administrator-godkendelse). Har du allerede Claude Code eller Codex, bruges det, men du bliver stadig spurgt, så du selv vælger.
    3. **MitID-brugernavn**, og godkendelse i MitID-appen. Agenten henter selv dine børn, deres skole, klasse og Aula-grupper, dit navn og om du er kontaktforælder.
    4. **Outlook-login** med en kode på microsoft.com/link. Ugemailen går til den konto, du logger ind med, og kalenderen "Skole og fritid" oprettes.
 
@@ -66,6 +66,8 @@ Hver uge (som standard søndag kl. 7):
 Agenten ligger bagefter i `C:\Users\<dig>\Aula-kalenderagent`, og i **Start-menuen > Aula-kalenderagent** finder du genvejene **Kør nu**, **Log ind på Aula igen**, **Log ind på Outlook igen**, **Opsætning** og **Åbn agent-mappen**. Du skal ikke bruge PowerShell igen.
 
 **Opdatering:** kør samme linje igen. Den finder selv din installation, også hvis du har installeret fra ZIP et andet sted, og dine indstillinger og login bevares.
+
+**Skift mellem Claude og ChatGPT:** kør **Opsætning** fra Start-menuen, og vælg den anden. Mangler programmet, tilbyder opsætningen at installere det.
 
 Navne, klasser, Aula-grupper og noter om familien kan rettes bagefter i `config.json`. Kør **Opsætning** fra Start-menuen for at opdatere fra Aula; det, du har rettet, bliver bevaret.
 
