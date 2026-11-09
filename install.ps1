@@ -13,6 +13,7 @@
     $Repo = "ai-tvang/aula-kalender-agent"
     $Branch = "main"
     if ($env:AULA_AGENT_BRANCH) { $Branch = $env:AULA_AGENT_BRANCH }  # kun til test af nye versioner
+    # AULA_AGENT_TEST=1: opsaet.ps1 opretter ingen opgave eller genveje, og første kørsel er en tørkørsel.
     # Mappe: AULA_AGENT_DIR, ellers den mappe, den planlagte opgave allerede bruger
     # (så en opdatering rammer den eksisterende installation), ellers standard.
     $Dir = Join-Path $HOME "Aula-kalenderagent"

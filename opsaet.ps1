@@ -17,6 +17,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Dir = $PSScriptRoot
+# Testtilstand (kun til test af nye versioner): ingen planlagt opgave, ingen genveje, og første
+# kørsel er en tørkørsel, så intet skrives i kalenderen, og der sendes ingen mail.
+$Test = [bool]$env:AULA_AGENT_TEST
+if ($Test) { Write-Host "TESTTILSTAND: ingen planlagt opgave, ingen genveje, første kørsel er en tørkørsel." -ForegroundColor Yellow }
 Set-Location $Dir
 
 function Trin($tekst) { Write-Host ""; Write-Host "== $tekst" -ForegroundColor Cyan }
@@ -170,6 +174,7 @@ else { uv run --python-preference only-system agent.py opsaet }
 if ($LASTEXITCODE -ne 0) { Stop-Med "Opsætningen blev ikke færdig. Kør scriptet igen; det, der er gemt, bliver genbrugt." }
 }
 
+if (-not $Test) {
 # 6. Planlagt opgave
 Trin "Automatisk kørsel"
 $uvSti = (Get-Command uv).Source
@@ -212,13 +217,16 @@ try {
     Write-Host "  Genvejene kunne ikke oprettes ($($_.Exception.Message)). Agenten virker stadig." -ForegroundColor Yellow
 }
 
+}
+
 if ($KunGenveje) {
     Write-Host ""
     Write-Host "Opgaven og genvejene peger nu på $Dir." -ForegroundColor Green
 } else {
 # 8. Første kørsel
 Trin "Første kørsel (læser de sidste 30 dage, tager 2-5 minutter)"
-uv run --python-preference only-system agent.py weekly --days 30
+if ($Test) { uv run --python-preference only-system agent.py weekly --days 30 --dry-run }
+else { uv run --python-preference only-system agent.py weekly --days 30 }
 if ($LASTEXITCODE -eq 0) {
     Write-Host ""
     Write-Host "Opsætningen er færdig. Tjek din mail og kalenderen 'Skole og fritid' i Outlook." -ForegroundColor Green
