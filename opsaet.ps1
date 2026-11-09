@@ -139,11 +139,19 @@ $apiValg = $false
 if (-not $mode) {
     # Ny installation: spørg altid, også hvis Claude Code eller Codex allerede findes.
     Trin "AI (Claude eller ChatGPT)"
-    Write-Host "  Agenten bruger en AI til at læse Aula for dig. Hvilket abonnement har du?"
+    Write-Host "  Agenten bruger en AI til at læse Aula for dig. Hver uge sendes nye opslag og beskeder"
+    Write-Host "  fra Aula, også fra andre forældre og om andre børn, til den AI, du vælger."
+    Write-Host "  Hvilket abonnement har du?"
     Write-Host "   1. Claude (Pro eller Max): bruger Claude Code. Det koster ikke ekstra."
+    Write-Host "      Data: sendes til Anthropic. Om det bruges til træning, afhænger af dine"
+    Write-Host "      privatlivsindstillinger i Claude."
     Write-Host "   2. ChatGPT (Plus, Pro, Go eller Free): bruger Codex. Det koster ikke ekstra, men der er"
     Write-Host "      forbrugsgrænser. Med Go og Free bruges en mindre model, som overser flere ting."
+    Write-Host "      Data: sendes til OpenAI og bruges til træning, medmindre du slår 'Gør modellen"
+    Write-Host "      bedre for alle' fra i ChatGPT (Indstillinger > Datastyring)."
     Write-Host "   3. Ingen af dem: du bruger en API-nøgle og betaler pr. kørsel (ca. 2-10 kr. om måneden)."
+    Write-Host "      Data: sendes til Anthropic eller OpenAI og bruges ikke til træning."
+    Write-Host "  Uanset valg kan udbyderen opbevare data i en periode efter sine vilkår. Se README."
     $standard = if ((Find-Codex) -and -not (Find-Claude)) { "2" } else { "1" }
     $svar = Read-Host "  Vælg 1, 2 eller 3 [$standard]"
     if (-not $svar) { $svar = $standard }

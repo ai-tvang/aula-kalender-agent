@@ -2370,9 +2370,10 @@ def setup_ai(cfg: dict, force_api: bool = False, provider: str | None = None) ->
             default = "chatgpt" if is_openai(cfg) else "claude"
         else:
             default = "chatgpt" if has_codex and not has_claude else "claude"
-        print("  Agenten bruger en AI til at læse Aula. Vælg den, du har abonnement på:")
+        print("  Agenten bruger en AI til at læse Aula. Ugens opslag og beskeder sendes til den AI, du vælger.")
         print("  claude  = Claude (Anthropic), via Claude Code eller en API-nøgle")
-        print("  chatgpt = ChatGPT (OpenAI), via Codex eller en API-nøgle")
+        print("  chatgpt = ChatGPT (OpenAI), via Codex eller en API-nøgle. Med et ChatGPT-abonnement bruges")
+        print("            indholdet til træning, medmindre du slår det fra i ChatGPT (Datastyring).")
         provider = ask_choice("  Hvilken AI skal læse Aula?", ["claude", "chatgpt"], default)
     if provider == "chatgpt":
         setup_openai(cfg, force_api, has_codex)

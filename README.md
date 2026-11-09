@@ -289,7 +289,7 @@ Krypteringen er bundet til din Windows-bruger på netop denne computer. En kopi 
 ### Det sendes til AI'en
 
 - **Aula-indhold sendes til den AI, du har valgt** (Claude fra Anthropic eller ChatGPT fra OpenAI), hver uge for at blive læst. Det omfatter beskeder fra andre forældre og navne på andre børn. Vær bevidst om det, før du slår agenten til.
-- **Claude:** Med API-nøgle gælder Anthropics kommercielle vilkår; med Claude Code gælder vilkårene for dit abonnement.
+- **Claude:** Med API-nøgle gælder Anthropics kommercielle vilkår, og indholdet bruges ikke til træning. Med Claude Code gælder vilkårene for dit abonnement; om indholdet bruges til træning, afhænger af dine privatlivsindstillinger i Claude.
 - **ChatGPT og OpenAI:** Indholdet behandles hos OpenAI efter OpenAIs vilkår, og OpenAI kan opbevare det i en periode, fx til misbrugsovervågning. Med OpenAI API-nøgle bruges det ikke til at træne modeller, og agenten beder om, at svarene ikke gemmes som lagrede svar i API'et. Det er ikke en garanti for, at intet opbevares. Med et ChatGPT-abonnement (Codex) kan OpenAI bruge indholdet til træning, medmindre du slår det fra: chatgpt.com > **Indstillinger > Datastyring > Gør modellen bedre for alle** = fra. Indstillingen gælder hele din ChatGPT-konto. OpenAIs hjælpeside nævner ikke Codex specifikt, så vi går ud fra, at den også gælder Codex. At slå træning fra betyder ikke, at OpenAI ikke opbevarer noget.
 - **Din MitID-adgangskode gemmes ingen steder** og sendes ikke til AI'en. Nye logins godkendes altid i MitID-appen.
 - AI'ens svar kan kun blive til aftaler i din egen kalender og en mail til dig selv. Står der instruktioner til AI'en i en besked fra en anden, kan de ikke få adgang til dine login eller sende noget til andre:
