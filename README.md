@@ -17,6 +17,8 @@ Under huskelisten står de nye aftaler og ting, du bør kigge på selv: tilbud f
 
 **Open source.** Agenten er gratis og må bruges af alle (MIT-licens). Der arbejdes på andre AI-modeller end Claude, andre kalendere (fx iPhone og Google) og andre mailtjenester. [Feedback](#feedback) er meget velkommen.
 
+**Du skal bruge:** en Windows-computer, en personlig Outlook-konto (fx @outlook.com eller @hotmail.com), MitID-appen og enten et betalt Claude-abonnement eller en API-nøgle. Se [Det skal du have](#det-skal-du-have).
+
 > Uofficielt projekt. Det er ikke lavet eller godkendt af Aula, KL, STIL eller Netcompany, og det bruger Aulas interne API, som kan ændre sig uden varsel.
 
 ## Hvad den gør
@@ -39,7 +41,7 @@ Hver uge (som standard søndag kl. 7):
 - **Windows 10 eller 11.** Det er det eneste, der er testet.
 - **En personlig Outlook-konto** (@outlook.com, @hotmail.com, @live.dk). Arbejdskonti blokerer ofte for den slags adgang. Outlook-appen skal ikke være installeret; agenten logger selv ind.
 - **Adgang til Claude** på én af to måder:
-  - **Claude Code (anbefalet)** med et betalt Claude-abonnement. Kørslerne tæller med i dit almindelige forbrug og koster ikke ekstra. Claude-appen er ikke nok; det er Claude Code, der skal installeres. Det gøres med Anthropics officielle kommando i PowerShell, `irm https://claude.ai/install.ps1 | iex`, eller med `winget install Anthropic.ClaudeCode`. Git er ikke nødvendigt. Åbn et nyt PowerShell-vindue bagefter, kør `claude` én gang og log ind. Installér Claude Code, før du kører opsætningen, så vælger den det automatisk.
+  - **Claude Code (anbefalet)** med et betalt Claude-abonnement. Kørslerne tæller med i dit almindelige forbrug og koster ikke ekstra. Claude-appen er ikke nok, men installationen tilbyder at installere Claude Code for dig, og du logger ind én gang undervejs.
   - **API-nøgle** fra [console.anthropic.com](https://console.anthropic.com/settings/keys), hvis du ikke har et Claude-abonnement. Du betaler pr. kørsel, i dag omkring 6-10 kr. om måneden (se [Pris](#pris)). Kræver betalingskort og lidt kredit.
 
   Du behøver ikke bruge Claude til andet. Bruger du fx ChatGPT til hverdag, er API-nøglen den nemmeste vej.
@@ -48,21 +50,71 @@ Hver uge (som standard søndag kl. 7):
 
 ## Installation
 
-1. Hent projektet: klik **Code > Download ZIP** og pak det ud, fx til `C:\Users\<dig>\Projects`. Omdøb gerne mappen til `aula-kalenderagent`. Læg den **ikke** i OneDrive eller en anden synkroniseret mappe.
-2. Åbn mappen i Stifinder, så du kan se filen `opsaet.ps1`. Højreklik på et tomt sted i mappen og vælg **Åbn i Terminal** (Windows 10: hold Shift nede, højreklik og vælg **Åbn PowerShell-vindue her**). Kør:
+1. Åbn **PowerShell**: klik på Start, skriv `PowerShell` og tryk Enter.
+2. Kopiér linjen herunder (brug kopi-ikonet til højre), indsæt den i PowerShell med højreklik, og tryk Enter:
    ```
-   powershell -ExecutionPolicy Bypass -File .\opsaet.ps1
+   irm https://raw.githubusercontent.com/ai-tvang/aula-kalender-agent/main/install.ps1 | iex
    ```
-3. Scriptet installerer det nødvendige og stiller kun det, Aula og Outlook ikke kan svare på:
-   1. **MitID-brugernavn**, og godkendelse i MitID-appen (QR-koden vises i vinduet). Agenten henter selv dine børn, deres skole, klasse og Aula-grupper, dit navn og om du er kontaktforælder.
-   2. **Claude:** er Claude Code installeret, bruges den. Ellers indsætter du en API-nøgle.
-   3. **Outlook-login** med en kode på microsoft.com/link. Ugemailen går til den konto, du logger ind med, og kalenderen "Skole og fritid" oprettes.
+3. Følg vinduet. Det tager 10-15 minutter, og det meste er login:
+   1. **Python og uv** installeres automatisk.
+   2. **Claude Code** installeres, hvis du har et Claude-abonnement og ikke har den i forvejen. Du logger ind i browseren og skriver `/exit`, når den er klar. Uden abonnement indsætter du en API-nøgle i stedet.
+   3. **MitID-brugernavn**, og godkendelse i MitID-appen. Agenten henter selv dine børn, deres skole, klasse og Aula-grupper, dit navn og om du er kontaktforælder.
+   4. **Outlook-login** med en kode på microsoft.com/link. Ugemailen går til den konto, du logger ind med, og kalenderen "Skole og fritid" oprettes.
 
    Derefter opretter scriptet en ugentlig kørsel søndag kl. 7 og laver første kørsel med det samme (læser 30 dage tilbage). Kan agenten ikke finde et barns klasse, bliver du spurgt om den.
 
-Navne, klasser, Aula-grupper og noter om familien kan rettes bagefter i `config.json`. Kør `agent.py opsaet` igen for at opdatere fra Aula; det, du har rettet, bliver bevaret.
+Agenten ligger bagefter i `C:\Users\<dig>\Aula-kalenderagent`, og i **Start-menuen > Aula-kalenderagent** finder du genvejene **Kør nu**, **Log ind på Aula igen**, **Log ind på Outlook igen**, **Opsætning** og **Åbn agent-mappen**. Du skal ikke bruge PowerShell igen.
 
-Vil du have en anden dag eller et andet tidspunkt: `.\opsaet.ps1 -Dag Saturday -Tid "08:00"`.
+**Opdatering:** kør samme linje igen. Den finder selv din installation, også hvis du har installeret fra ZIP et andet sted, og dine indstillinger og login bevares.
+
+Navne, klasser, Aula-grupper og noter om familien kan rettes bagefter i `config.json`. Kør **Opsætning** fra Start-menuen for at opdatere fra Aula; det, du har rettet, bliver bevaret.
+
+Vil du have en anden dag eller et andet tidspunkt, så åbn PowerShell i agent-mappen og kør `.\opsaet.ps1 -Dag Saturday -Tid "08:00"`.
+
+Har du flyttet agent-mappen, så åbn PowerShell i den nye mappe og kør `powershell -ExecutionPolicy Bypass -File .\opsaet.ps1 -KunGenveje`. Det flytter den planlagte kørsel og genvejene uden at køre guiden igen.
+
+<details>
+<summary>Installation uden én-linje-kommandoen</summary>
+
+1. Klik **Code > Download ZIP** og pak det ud, fx til `C:\Users\<dig>\Aula-kalenderagent`. Læg den **ikke** i OneDrive eller en anden synkroniseret mappe.
+2. Åbn mappen i Stifinder, højreklik på et tomt sted og vælg **Åbn i Terminal** (Windows 10: hold Shift nede, højreklik og vælg **Åbn PowerShell-vindue her**). Kør:
+   ```
+   powershell -ExecutionPolicy Bypass -File .\opsaet.ps1
+   ```
+</details>
+
+### Er det sikkert at køre linjen?
+
+Linjen henter [install.ps1](install.ps1) fra dette repo og kører den. Du kan åbne filen og læse den først; den er kort. Den gør tre ting:
+
+1. Henter agenten som ZIP-fil fra GitHub og lægger den i `C:\Users\<dig>\Aula-kalenderagent`.
+2. Starter [opsaet.ps1](opsaet.ps1), som installerer Python (via winget fra python.org), uv (fra astral.sh) og, hvis du siger ja, Claude Code (fra claude.ai).
+3. Opsætningen opretter en planlagt opgave og genveje i Start-menuen.
+
+Intet sendes til forfatteren af agenten. Hvad agenten gemmer og sender til Claude, står under [Privatliv og sikkerhed](#privatliv-og-sikkerhed), og hvordan du fjerner det igen, under [Sådan trækker du adgangen tilbage](#sådan-trækker-du-adgangen-tilbage).
+
+### Hjælp fra Claude eller ChatGPT
+
+Du kan indsætte linket til denne side i Claude eller ChatGPT og skrive fx "Hjælp mig med at installere den her trin for trin". Går noget galt, så kopiér teksten fra PowerShell-vinduet ind i chatten. Fjern navne på børn og andre forældre først.
+
+### Hvis noget går galt
+
+| Det ser du | Gør sådan |
+|---|---|
+| Rød tekst om `iexirm` eller en lang, forkert kommando | Linjen blev indsat to gange. Tryk Esc, og indsæt den én gang. |
+| Fejl om, at scripts er deaktiveret ("running scripts is disabled") | Brug linjen fra trin 2. Ved den manuelle vej: kør `powershell -ExecutionPolicy Bypass -File .\opsaet.ps1`. |
+| "STOP: Din brugermappe ligger i OneDrive" | Brug den manuelle vej, og læg mappen uden for OneDrive, fx `C:\Aula-kalenderagent`. |
+| "Python 3.14 kunne ikke installeres" | Installer Python 3.14 fra [python.org](https://www.python.org/downloads/windows/), og kør linjen igen. |
+| `claude` findes ikke, eller Claude Code beder om login under kørslen | Åbn et nyt PowerShell-vindue, kør `claude`, log ind og skriv `/exit`. Kør derefter **Opsætning** fra Start-menuen (eller linjen igen). |
+| Du har ikke et Claude-abonnement | Svar nej til Claude Code, og brug en API-nøgle (se [Det skal du have](#det-skal-du-have)). |
+| MitID spørger, om du vil logge ind som privatperson eller et firma | Vælg dig selv som privatperson. |
+| "Codes read. Approve the login in your MitID app." | Teksten er på engelsk, men betyder bare: godkend i MitID-appen. |
+| Outlook-login: kode og microsoft.com/link | Åbn microsoft.com/link i browseren, skriv koden, log ind med din personlige Outlook-konto og godkend. Vinduet fortsætter selv. |
+| Outlook-login afvises, eller du bliver bedt om en administrator | Det er sandsynligvis en arbejds- eller skolekonto. Brug en personlig konto, fx en ny gratis @outlook.com. |
+| Opsætningen stoppede halvvejs | Kør linjen eller **Opsætning** igen. Det, der allerede er gemt (fx MitID og Outlook), genbruges. |
+| Ingen ugemail søndag | Computeren var slukket eller i dvale. Agenten kører, når den tændes. Ellers se `logs\agent.log` via **Åbn agent-mappen**. |
+
+Står din fejl ikke her, så opret et [issue](../../issues) med teksten fra vinduet (uden navne).
 
 ## config.json
 
@@ -159,7 +211,7 @@ Billeder bliver skaleret ned, før de sendes, og Claude ser kun dem, reglerne i 
 
 ## Daglig brug
 
-Du skal normalt ikke gøre noget. Kommandoerne er gode at kende:
+Du skal normalt ikke gøre noget. Vil du køre agenten nu, så brug **Kør nu** i Start-menuen. Kommandoerne til PowerShell (i agent-mappen) er gode at kende:
 
 ```
 uv run --python-preference only-system agent.py weekly             # kør nu
@@ -177,8 +229,8 @@ Get-Content logs\agent.log -Tail 20                                # se hvad der
 
 Søndagens ugemail siger det øverst. Ved den daglige kørsel får du en mail (eller en fil på skrivebordet, hvis Outlook-login er udløbet):
 
-- **Aula:** kør `uv run --python-preference only-system agent.py login-aula`, godkend i MitID-appen, og kør derefter `agent.py weekly`.
-- **Outlook:** kør `agent.py login-outlook`.
+- **Aula:** Start-menuen > Aula-kalenderagent > **Log ind på Aula igen**, og godkend i MitID-appen. Agenten kører bagefter af sig selv.
+- **Outlook:** Start-menuen > Aula-kalenderagent > **Log ind på Outlook igen**.
 - **Claude Code:** kør `claude`, skriv `/login`, og afslut med `/exit`. Kør derefter `agent.py weekly`.
 - **API-nøgle afvist:** lav en ny nøgle på console.anthropic.com og ret `anthropic_api_key` i `config.json`.
 
