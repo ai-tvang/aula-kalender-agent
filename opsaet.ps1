@@ -2,6 +2,8 @@
 # Kør fra mappen med agenten:
 #   powershell -ExecutionPolicy Bypass -File .\opsaet.ps1
 # Valgfrit: -Tid "07:00" -Dag Sunday -Daglig
+# -KunGenveje: opretter kun den planlagte opgave og genvejene for denne mappe
+#   (fx efter at agent-mappen er flyttet). Springer guiden og første kørsel over.
 # Installeres normalt med én linje (se README), som henter agenten og kører dette script.
 
 param(
@@ -9,7 +11,8 @@ param(
     [ValidateSet("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday")]
     [string]$Dag = "Sunday",
     [switch]$Daglig,
-    [switch]$Pause
+    [switch]$Pause,
+    [switch]$KunGenveje
 )
 
 $ErrorActionPreference = "Stop"
@@ -50,6 +53,7 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) { Stop-Med "uv kunne ikke installeres. Se https://docs.astral.sh/uv/ og kør scriptet igen." }
 Ok (uv --version)
 
+if (-not $KunGenveje) {
 # 3. Claude Code (hvis den mangler, og der ikke allerede bruges en API-nøgle)
 function Find-Claude {
     $c = Get-Command claude -ErrorAction SilentlyContinue
@@ -96,6 +100,7 @@ Ok "pakker hentet"
 # 5. Guiden: MitID, Claude og Outlook. Børn, klasser og mailadresse findes automatisk.
 uv run --python-preference only-system agent.py opsaet
 if ($LASTEXITCODE -ne 0) { Stop-Med "Opsætningen blev ikke færdig. Kør scriptet igen; det, der er gemt, bliver genbrugt." }
+}
 
 # 6. Planlagt opgave
 Trin "Automatisk kørsel"
@@ -139,6 +144,10 @@ try {
     Write-Host "  Genvejene kunne ikke oprettes ($($_.Exception.Message)). Agenten virker stadig." -ForegroundColor Yellow
 }
 
+if ($KunGenveje) {
+    Write-Host ""
+    Write-Host "Opgaven og genvejene peger nu på $Dir." -ForegroundColor Green
+} else {
 # 8. Første kørsel
 Trin "Første kørsel (læser de sidste 30 dage, tager 2-5 minutter)"
 uv run --python-preference only-system agent.py weekly --days 30
@@ -148,6 +157,7 @@ if ($LASTEXITCODE -eq 0) {
 } else {
     Write-Host ""
     Write-Host "Opsætningen er færdig, men første kørsel gav en fejl. Se ugemailen eller logs\agent.log." -ForegroundColor Yellow
+}
 }
 Write-Host "Senere finder du agenten i Start-menuen under 'Aula-kalenderagent'."
 if ($Pause) { Read-Host "Tryk Enter for at lukke" | Out-Null }

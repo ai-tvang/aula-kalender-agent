@@ -2,6 +2,7 @@
 #   irm https://raw.githubusercontent.com/ai-tvang/aula-kalender-agent/main/install.ps1 | iex
 #
 # Henter agenten til C:\Users\<dig>\Aula-kalenderagent og starter opsætningen.
+# Findes agenten allerede (fx et andet sted fra en ZIP-installation), opdateres den dér.
 # Kører du linjen igen, opdateres agenten. Dine indstillinger og login bevares,
 # fordi de ikke findes i ZIP-filen.
 
@@ -12,7 +13,18 @@
     $Repo = "ai-tvang/aula-kalender-agent"
     $Branch = "main"
     if ($env:AULA_AGENT_BRANCH) { $Branch = $env:AULA_AGENT_BRANCH }  # kun til test af nye versioner
+    # Mappe: AULA_AGENT_DIR, ellers den mappe, den planlagte opgave allerede bruger
+    # (så en opdatering rammer den eksisterende installation), ellers standard.
     $Dir = Join-Path $HOME "Aula-kalenderagent"
+    if ($env:AULA_AGENT_DIR) {
+        $Dir = $env:AULA_AGENT_DIR
+    } else {
+        try {
+            $opgave = Get-ScheduledTask -TaskName "Aula-kalenderagent ugentlig" -ErrorAction Stop
+            $wd = $opgave.Actions[0].WorkingDirectory
+            if ($wd -and (Test-Path (Join-Path $wd "agent.py"))) { $Dir = $wd }
+        } catch {}
+    }
 
     Write-Host ""
     Write-Host "Aula-kalenderagent" -ForegroundColor Cyan

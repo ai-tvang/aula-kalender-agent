@@ -65,11 +65,13 @@ Hver uge (som standard søndag kl. 7):
 
 Agenten ligger bagefter i `C:\Users\<dig>\Aula-kalenderagent`, og i **Start-menuen > Aula-kalenderagent** finder du genvejene **Kør nu**, **Log ind på Aula igen**, **Log ind på Outlook igen**, **Opsætning** og **Åbn agent-mappen**. Du skal ikke bruge PowerShell igen.
 
-**Opdatering:** kør samme linje igen. Dine indstillinger og login bevares.
+**Opdatering:** kør samme linje igen. Den finder selv din installation, også hvis du har installeret fra ZIP et andet sted, og dine indstillinger og login bevares.
 
 Navne, klasser, Aula-grupper og noter om familien kan rettes bagefter i `config.json`. Kør **Opsætning** fra Start-menuen for at opdatere fra Aula; det, du har rettet, bliver bevaret.
 
 Vil du have en anden dag eller et andet tidspunkt, så åbn PowerShell i agent-mappen og kør `.\opsaet.ps1 -Dag Saturday -Tid "08:00"`.
+
+Har du flyttet agent-mappen, så åbn PowerShell i den nye mappe og kør `powershell -ExecutionPolicy Bypass -File .\opsaet.ps1 -KunGenveje`. Det flytter den planlagte kørsel og genvejene uden at køre guiden igen.
 
 <details>
 <summary>Installation uden én-linje-kommandoen</summary>
