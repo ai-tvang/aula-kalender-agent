@@ -2091,15 +2091,17 @@ def cmd_daily(cfg: dict, state: dict, dry: bool) -> int:
         asyncio.run(aula_keep_alive(cfg))
     except AulaLoginRequired:
         notify_login(graph, cfg, state, "Aula kræver nyt MitID-login",
-                     f"Åbn PowerShell i agent-mappen og kør: {RUN} login-aula (godkend i MitID-appen)")
+                     "Åbn Start-menuen > Aula-kalenderagent > Log ind på Aula igen, og godkend i MitID-appen. "
+                     f"Har du ikke genvejen: åbn PowerShell i agent-mappen og kør {RUN} login-aula")
     if not dry:
         state["last_daily"] = now_local().isoformat()
     return 0
 
 
 AULA_LOGIN_HOW = (
-    f"Åbn PowerShell i agent-mappen og kør: {RUN} login-aula (godkend i MitID-appen). "
-    f"Kør derefter: {RUN} weekly"
+    "Åbn Start-menuen > Aula-kalenderagent > Log ind på Aula igen, og godkend i MitID-appen. "
+    "Genvejen kører også agenten bagefter. "
+    f"Har du ikke genvejen: åbn PowerShell i agent-mappen og kør {RUN} login-aula og derefter {RUN} weekly"
 )
 
 
