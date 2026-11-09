@@ -30,15 +30,17 @@ Kommandoer (køres fra mappen med denne fil):
 opsaet:      logger ind i Aula med MitID, henter børn, skole og klasser og
              skriver config.json efter få spørgsmål.
 login-aula:  nyt MitID-login, når Aula-login er udløbet.
-daily:       holder Aula-login i live og synkroniserer kalender-links (ingen Claude).
-weekly:      daily + læser nye opslag og beskeder med Claude, skriver aftaler og
+daily:       holder Aula-login i live og synkroniserer kalender-links (ingen AI).
+weekly:      daily + læser nye opslag og beskeder med AI'en, skriver aftaler og
              sender en ugemail.
 manual:      lægger aftalerne fra manuelle_aftaler.json i kalenderen med det samme
              (det sker også ved hver daily og weekly).
 
-Claude kan køre på to måder (config.json):
-- API-nøgle fra console.anthropic.com ("anthropic_api_key"), betaling pr. forbrug.
-- Claude Code ("claude"-kommandoen), tæller i dit Claude-abonnement.
+AI'en kan køre på fire måder ("ai_mode" i config.json):
+- "claude-code": Claude Code ("claude"-kommandoen), tæller i dit Claude-abonnement.
+- "api": API-nøgle fra console.anthropic.com ("anthropic_api_key"), betaling pr. forbrug.
+- "codex": Codex CLI ("codex"-kommandoen), tæller i dit ChatGPT-abonnement.
+- "openai-api": API-nøgle fra platform.openai.com ("openai_api_key"), betaling pr. forbrug.
 """
 from __future__ import annotations
 
@@ -170,14 +172,22 @@ class AulaLoginRequired(Exception):
     pass
 
 
-class ClaudeLoginRequired(Exception):
-    pass
+class AiLoginRequired(Exception):
+    """Login til AI'en er udløbet, eller API-nøglen er afvist."""
 
+
+ClaudeLoginRequired = AiLoginRequired  # gammelt navn
 
 CLAUDE_AUTH_PATTERN = re.compile(
     r"Failed to authenticate|OAuth|not logged in|Please run /login|Invalid API key|authentication_error",
     re.I,
 )
+CODEX_AUTH_PATTERN = re.compile(
+    r"not logged in|codex login|401 Unauthorized|status: 401|\"status\":401|unauthorized|"
+    r"refresh token|token (?:has )?expired|sign in again|log in again",
+    re.I,
+)
+CODEX_MODEL_PATTERN = re.compile(r"not supported when using Codex with a ChatGPT account|model_not_found", re.I)
 
 
 SECRET_PREFIX = "DPAPI1:"
@@ -437,9 +447,9 @@ def body_hash(body: dict) -> str:
 
 
 def aula_unchanged(cfg: dict, rec: dict | None, item: dict) -> bool:
-    """Sand, hvis Claude gentager en eksisterende aftale uden ny dato, tid eller titel og uden at
+    """Sand, hvis AI'en gentager en eksisterende aftale uden ny dato, tid eller titel og uden at
     angive en grund i "update_reason". Så bliver aftalen ikke skrevet igen bare fordi
-    Claude har formuleret noterne lidt anderledes."""
+    AI'en har formuleret noterne lidt anderledes."""
     if not rec or rec.get("source") != "aula" or (item.get("update_reason") or "").strip():
         return False
     subject = build_event(cfg, item)["subject"]
@@ -1232,7 +1242,7 @@ async def fetch_week_plan(client, prof, cfg: dict, monday: date, friday: date) -
 
 
 def fri_from_schema(plan: dict | None) -> list[dict]:
-    """Fri-tidspunkter direkte fra skemaet (bruges, når Claude ikke har givet nogen)."""
+    """Fri-tidspunkter direkte fra skemaet (bruges, når AI'en ikke har givet nogen)."""
     out = []
     for name, v in ((plan or {}).get("children") or {}).items():
         for d, t in sorted((v.get("slut") or {}).items()):
@@ -1363,7 +1373,7 @@ def prepare_input(posts: list[dict], threads: list[dict], since: datetime, run_d
 
 
 # --------------------------------------------------------------------------- #
-# Claude
+# AI (Claude eller ChatGPT/OpenAI)
 # --------------------------------------------------------------------------- #
 OUTPUT_SPEC = """
 ## Output
@@ -1453,67 +1463,134 @@ def cleanup_runs(cfg: dict) -> None:
             shutil.rmtree(d, ignore_errors=True)
 
 
-# Claude via API-nøgle ------------------------------------------------------ #
-ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
+# Fælles ------------------------------------------------------------------- #
+AI_MODES = ("claude-code", "api", "codex", "openai-api")
 DEFAULT_API_MODEL = "claude-opus-5-5"
-# Listepriser i USD pr. million tokens: input, output, cache-skrivning, cache-læsning.
-# Kun til den anslåede pris i loggen. Se https://claude.com/pricing.
-API_PRICES = {
-    "claude-sonnet-5-5": (2.0, 10.0, 2.5, 0.10),
-    "claude-opus-5-5": (4.0, 20.0, 5.0, 0.20),
-    "claude-haiku-5-5": (0.10, 0.50, 0.125, 0.01),
-}
+DEFAULT_OPENAI_MODEL = "gpt-6.1-sol"
+# Codex med ChatGPT-login: prøv denne model først. Giver abonnementet ikke adgang
+# (fx Go og Free), bruges abonnementets standardmodel i stedet.
+DEFAULT_CODEX_MODEL = "gpt-6.1-sol"
+DEFAULT_OPENAI_EFFORT = "high"
+# Ældre Codex-versioner kan ikke læse OpenAIs nuværende modelliste.
+MIN_CODEX_VERSION = (0, 167, 0)
+
+
+def ai_mode(cfg: dict) -> str:
+    """Hvilken AI der læser Aula. "claude_mode" er det gamle navn for feltet."""
+    for field in ("ai_mode", "claude_mode"):
+        mode = (cfg.get(field) or "").strip().lower()
+        if mode in AI_MODES:
+            return mode
+    if api_key(cfg):
+        return "api"
+    if openai_key(cfg):
+        return "openai-api"
+    return "claude-code"
+
+
+def claude_mode(cfg: dict) -> str:  # gammelt navn
+    return ai_mode(cfg)
+
+
+def is_openai(cfg: dict) -> bool:
+    return ai_mode(cfg) in ("codex", "openai-api")
+
+
+def ai_name(cfg: dict) -> str:
+    """Navnet på AI'en i tekster til brugeren."""
+    return {"codex": "ChatGPT", "openai-api": "OpenAI"}.get(ai_mode(cfg), "Claude")
+
+
+def ai_company(cfg: dict) -> str:
+    return "OpenAI" if is_openai(cfg) else "Anthropic"
+
+
+def _stored_key(cfg: dict, field: str, env: str) -> str:
+    stored = (cfg.get(field) or "").strip()
+    if stored:
+        stored = unprotect_text(stored).strip()
+    return (stored or os.environ.get(env) or "").strip()
+
+
+def api_key(cfg: dict) -> str:
+    return _stored_key(cfg, "anthropic_api_key", "ANTHROPIC_API_KEY")
+
+
+def openai_key(cfg: dict) -> str:
+    return _stored_key(cfg, "openai_api_key", "OPENAI_API_KEY")
+
+
+def protect_config_secrets(cfg: dict) -> bool:
+    """Krypterer API-nøgler, der står i klartekst i config.json. Returnerer True, hvis cfg blev ændret."""
+    changed = False
+    for field in ("anthropic_api_key", "openai_api_key"):
+        key = (cfg.get(field) or "").strip()
+        if key and not key.startswith(SECRET_PREFIX) and can_protect():
+            cfg[field] = protect_text(key)
+            changed = True
+    return changed
+
+
 API_IMAGE_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
                    ".gif": "image/gif", ".webp": "image/webp"}
 MAX_IMAGE_SIDE = 1568
 MAX_IMAGE_BYTES = 3_500_000
-IMAGE_TOOL = {
-    "name": "laes_billede",
-    "description": (
-        "Viser et vedhæftet billede fra data (feltet image_file). "
-        "Brug det kun efter reglerne for vedhæftninger."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {"image_file": {"type": "string", "description": "Værdien af image_file, fx attachments/123_foto.jpg"}},
-        "required": ["image_file"],
-    },
+IMAGE_TOOL_DESCRIPTION = (
+    "Viser et vedhæftet billede fra data (feltet image_file). "
+    "Brug det kun efter reglerne for vedhæftninger."
+)
+IMAGE_TOOL_SCHEMA = {
+    "type": "object",
+    "properties": {"image_file": {"type": "string", "description": "Værdien af image_file, fx attachments/123_foto.jpg"}},
+    "required": ["image_file"],
 }
+IMAGE_TOOL = {"name": "laes_billede", "description": IMAGE_TOOL_DESCRIPTION, "input_schema": IMAGE_TOOL_SCHEMA}
 
 
-def api_key(cfg: dict) -> str:
-    import os
+def image_data(run_dir: Path, rel: str) -> tuple[bytes, str] | str:
+    """Billede klar til AI'en, skaleret ned for at holde prisen nede. Returnerer (data, mediatype)
+    eller en fejltekst. Kun filer i kørslens mappe."""
+    root = run_dir.resolve()
+    path = (run_dir / rel).resolve()
+    if root not in path.parents or not path.is_file():
+        return f"Filen {rel} findes ikke."
+    try:
+        from PIL import Image, ImageOps
 
-    stored = (cfg.get("anthropic_api_key") or "").strip()
-    if stored:
-        stored = unprotect_text(stored).strip()
-    return (stored or os.environ.get("ANTHROPIC_API_KEY") or "").strip()
+        with Image.open(path) as im:
+            im = ImageOps.exif_transpose(im)
+            im.thumbnail((MAX_IMAGE_SIDE, MAX_IMAGE_SIDE))
+            if im.mode not in ("RGB", "L"):
+                im = im.convert("RGB")
+            buf = io.BytesIO()
+            im.save(buf, "JPEG", quality=85)
+        return buf.getvalue(), "image/jpeg"
+    except Exception as e:  # noqa: BLE001
+        media_type = API_IMAGE_TYPES.get(path.suffix.lower())
+        data = path.read_bytes()
+        if not media_type or len(data) > MAX_IMAGE_BYTES:
+            return f"Billedet {rel} kan ikke vises ({e})."
+        return data, media_type
 
 
-def protect_config_secrets(cfg: dict) -> bool:
-    """Krypterer en API-nøgle, der står i klartekst i config.json. Returnerer True, hvis cfg blev ændret."""
-    key = (cfg.get("anthropic_api_key") or "").strip()
-    if key and not key.startswith(SECRET_PREFIX) and can_protect():
-        cfg["anthropic_api_key"] = protect_text(key)
-        return True
-    return False
+def image_block(run_dir: Path, rel: str) -> dict | str:
+    """Billede i Anthropics format."""
+    img = image_data(run_dir, rel)
+    if isinstance(img, str):
+        return img
+    data, media_type = img
+    return {"type": "image", "source": {"type": "base64", "media_type": media_type,
+                                        "data": base64.b64encode(data).decode()}}
 
 
-def claude_mode(cfg: dict) -> str:
-    mode = (cfg.get("claude_mode") or "").strip().lower()
-    if mode in ("api", "claude-code"):
-        return mode
-    return "api" if api_key(cfg) else "claude-code"
-
-
-def anthropic_post(key: str, body: dict) -> dict:
-    headers = {"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+def http_post(url: str, headers: dict, body: dict, name: str) -> dict:
+    """POST med genforsøg ved overbelastning. 401 betyder afvist nøgle."""
     for attempt in range(5):
         try:
-            r = httpx.post(ANTHROPIC_URL, headers=headers, json=body, timeout=600)
+            r = httpx.post(url, headers=headers, json=body, timeout=600)
         except httpx.TransportError as e:
             if attempt == 4:
-                raise RuntimeError(f"Kunne ikke nå Claude API: {e}") from e
+                raise RuntimeError(f"Kunne ikke nå {name}: {e}") from e
             _time.sleep(10 * (attempt + 1))
             continue
         if r.status_code in (429, 500, 502, 503, 504, 529) and attempt < 4:
@@ -1524,11 +1601,27 @@ def anthropic_post(key: str, body: dict) -> dict:
             _time.sleep(min(max(wait, 10 * (attempt + 1)), 90))
             continue
         if r.status_code == 401:
-            raise ClaudeLoginRequired("Claude API afviste nøglen (401)")
+            raise AiLoginRequired(f"{name} afviste nøglen (401)")
         if r.status_code >= 400:
-            raise RuntimeError(f"Claude API {r.status_code}: {r.text[:600]}")
+            raise RuntimeError(f"{name} {r.status_code}: {r.text[:600]}")
         return r.json()
-    raise RuntimeError("Claude API svarede ikke efter flere forsøg")
+    raise RuntimeError(f"{name} svarede ikke efter flere forsøg")
+
+
+# Claude via API-nøgle ------------------------------------------------------ #
+ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
+# Listepriser i USD pr. million tokens: input, output, cache-skrivning, cache-læsning.
+# Kun til den anslåede pris i loggen. Se https://claude.com/pricing.
+API_PRICES = {
+    "claude-sonnet-5-5": (2.0, 10.0, 2.5, 0.10),
+    "claude-opus-5-5": (4.0, 20.0, 5.0, 0.20),
+    "claude-haiku-5-5": (0.10, 0.50, 0.125, 0.01),
+}
+
+
+def anthropic_post(key: str, body: dict) -> dict:
+    headers = {"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+    return http_post(ANTHROPIC_URL, headers, body, "Claude API")
 
 
 def check_api_key(key: str) -> str | None:
@@ -1546,32 +1639,6 @@ def check_api_key(key: str) -> str | None:
     if r.status_code >= 400:
         return f"fejl {r.status_code}: {r.text[:200]}"
     return None
-
-
-def image_block(run_dir: Path, rel: str) -> dict | str:
-    """Billede klar til API'et, skaleret ned for at holde prisen nede."""
-    root = run_dir.resolve()
-    path = (run_dir / rel).resolve()
-    if root not in path.parents or not path.is_file():
-        return f"Filen {rel} findes ikke."
-    try:
-        from PIL import Image, ImageOps
-
-        with Image.open(path) as im:
-            im = ImageOps.exif_transpose(im)
-            im.thumbnail((MAX_IMAGE_SIDE, MAX_IMAGE_SIDE))
-            if im.mode not in ("RGB", "L"):
-                im = im.convert("RGB")
-            buf = io.BytesIO()
-            im.save(buf, "JPEG", quality=85)
-        data, media_type = buf.getvalue(), "image/jpeg"
-    except Exception as e:  # noqa: BLE001
-        media_type = API_IMAGE_TYPES.get(path.suffix.lower())
-        data = path.read_bytes()
-        if not media_type or len(data) > MAX_IMAGE_BYTES:
-            return f"Billedet {rel} kan ikke vises ({e})."
-    return {"type": "image", "source": {"type": "base64", "media_type": media_type,
-                                        "data": base64.b64encode(data).decode()}}
 
 
 def api_cost(model: str, usage: dict) -> float | None:
@@ -1634,8 +1701,8 @@ def run_claude_api(cfg: dict, prompt: str, run_dir: Path) -> str:
         messages.append({"role": "user", "content": results})
 
     cost = api_cost(model, usage)
-    save_json(run_dir / "claude_usage.json", {"model": model, "turns": turn, "images": images,
-                                               "usage": usage, "estimated_usd": cost})
+    save_json(run_dir / "ai_usage.json", {"mode": "api", "model": model, "turns": turn, "images": images,
+                                           "usage": usage, "estimated_usd": cost})
     log.info(
         "Claude API (%s): %d runder, %d billeder, %d tokens ind (%d fra cache), %d ud%s",
         model, turn, images,
@@ -1643,7 +1710,7 @@ def run_claude_api(cfg: dict, prompt: str, run_dir: Path) -> str:
         usage["cache_read_input_tokens"], usage["output_tokens"],
         f", ca. {cost:.2f} USD" if cost is not None else "",
     )
-    (run_dir / "claude_stdout.txt").write_text(json.dumps(content, ensure_ascii=False, indent=1), encoding="utf-8")
+    (run_dir / "ai_output.txt").write_text(json.dumps(content, ensure_ascii=False, indent=1), encoding="utf-8")
     return "".join(b.get("text", "") for b in content if b.get("type") == "text")
 
 
@@ -1687,7 +1754,7 @@ def run_claude_code(cfg: dict, prompt: str, run_dir: Path) -> str:
         cwd=run_dir,
         timeout=1800,
     )
-    (run_dir / "claude_stdout.txt").write_text(res.stdout or "", encoding="utf-8")
+    (run_dir / "ai_output.txt").write_text(res.stdout or "", encoding="utf-8")
     out = (res.stderr or "") + (res.stdout or "")
     try:
         parsed = json.loads(res.stdout)
@@ -1697,7 +1764,7 @@ def run_claude_code(cfg: dict, prompt: str, run_dir: Path) -> str:
     if is_error:
         reason = parsed.get("result", "") if isinstance(parsed, dict) else ""
         if CLAUDE_AUTH_PATTERN.search(reason or out):
-            raise ClaudeLoginRequired(reason or out[-300:])
+            raise AiLoginRequired(reason or out[-300:])
         raise RuntimeError(f"Claude fejlede ({res.returncode}): {(reason or out)[-800:]}")
     if not isinstance(parsed, dict):
         return res.stdout or ""
@@ -1706,33 +1773,365 @@ def run_claude_code(cfg: dict, prompt: str, run_dir: Path) -> str:
     return parsed.get("result", "")
 
 
-def run_claude(cfg: dict, payload: dict, run_dir: Path) -> dict:
-    mode = claude_mode(cfg)
+# OpenAI via API-nøgle (Responses API) -------------------------------------- #
+OPENAI_URL = "https://api.openai.com/v1/responses"
+# Listepriser i USD pr. million tokens: input, cachet input, output.
+# Kun til den anslåede pris i loggen. Se https://developers.openai.com/api/docs/pricing.
+OPENAI_PRICES = {
+    "gpt-6-astra": (10.0, 1.0, 50.0),
+    "gpt-6.1-sol": (2.0, 0.10, 10.0),
+    "gpt-6.1-terra": (1.0, 0.05, 5.0),
+    "gpt-6-sol": (2.0, 0.20, 10.0),
+    "gpt-6-luna": (0.10, 0.01, 0.50),
+}
+OPENAI_IMAGE_TOOL = {"type": "function", "name": "laes_billede", "description": IMAGE_TOOL_DESCRIPTION,
+                     "parameters": IMAGE_TOOL_SCHEMA}
+
+
+def openai_post(key: str, body: dict) -> dict:
+    headers = {"authorization": f"Bearer {key}", "content-type": "application/json"}
+    return http_post(OPENAI_URL, headers, body, "OpenAI API")
+
+
+def check_openai_key(key: str) -> str | None:
+    """Gratis tjek af nøglen. Returnerer en fejltekst eller None."""
+    try:
+        r = httpx.get("https://api.openai.com/v1/models", headers={"authorization": f"Bearer {key}"}, timeout=30)
+    except httpx.TransportError as e:
+        return f"kunne ikke nå api.openai.com: {e}"
+    if r.status_code == 401:
+        return "nøglen blev afvist"
+    if r.status_code >= 400:
+        return f"fejl {r.status_code}: {r.text[:200]}"
+    return None
+
+
+def openai_cost(model: str, usage: dict) -> float | None:
+    price = OPENAI_PRICES.get(model)
+    if not price:
+        return None
+    inp, cached, out = price
+    fresh = usage.get("input_tokens", 0) - usage.get("cached_tokens", 0)
+    return (fresh * inp + usage.get("cached_tokens", 0) * cached + usage.get("output_tokens", 0) * out) / 1_000_000
+
+
+def openai_image_output(run_dir: Path, rel: str) -> list[dict] | str:
+    img = image_data(run_dir, rel)
+    if isinstance(img, str):
+        return img
+    data, media_type = img
+    return [{"type": "input_image", "detail": "high",
+             "image_url": f"data:{media_type};base64,{base64.b64encode(data).decode()}"}]
+
+
+def run_openai_api(cfg: dict, prompt: str, run_dir: Path) -> str:
+    """Samme kontrakt som run_claude_api: returnerer svarteksten og skriver forbrug i kørslens mappe."""
+    key = openai_key(cfg)
+    if not key:
+        raise RuntimeError("Mangler openai_api_key i config.json")
+    model = cfg.get("openai_model") or DEFAULT_OPENAI_MODEL
+    max_turns = int(cfg.get("api_max_turns", 12))
+    items: list[dict] = [{"role": "user", "content": [{"type": "input_text", "text": prompt}]}]
+    usage = {"input_tokens": 0, "cached_tokens": 0, "output_tokens": 0, "reasoning_tokens": 0}
+    images = 0
+    text = ""
+    for turn in range(1, max_turns + 1):
+        body = {
+            "model": model,
+            "input": items,
+            "tools": [OPENAI_IMAGE_TOOL],
+            "reasoning": {"effort": cfg.get("openai_effort") or DEFAULT_OPENAI_EFFORT},
+            "max_output_tokens": int(cfg.get("api_max_tokens", 32000)),
+            # Gemmes ikke hos OpenAI. Tænkningen sendes krypteret tilbage mellem runderne.
+            "store": False,
+            "include": ["reasoning.encrypted_content"],
+        }
+        if turn == max_turns:
+            body["tool_choice"] = "none"
+        resp = openai_post(key, body)
+        u = resp.get("usage") or {}
+        usage["input_tokens"] += u.get("input_tokens") or 0
+        usage["cached_tokens"] += (u.get("input_tokens_details") or {}).get("cached_tokens") or 0
+        usage["output_tokens"] += u.get("output_tokens") or 0
+        usage["reasoning_tokens"] += (u.get("output_tokens_details") or {}).get("reasoning_tokens") or 0
+        output = resp.get("output") or []
+        if resp.get("status") == "incomplete":
+            reason = (resp.get("incomplete_details") or {}).get("reason", "")
+            if reason == "max_output_tokens":
+                raise RuntimeError("Svaret fra OpenAI blev for langt (max_output_tokens). Hæv api_max_tokens i config.json.")
+            raise RuntimeError(f"OpenAI stoppede svaret før tid ({reason or 'ukendt grund'}).")
+        text = "".join(
+            part.get("text", "")
+            for item in output if item.get("type") == "message"
+            for part in item.get("content") or [] if part.get("type") == "output_text"
+        )
+        calls = [item for item in output if item.get("type") == "function_call"]
+        if not calls:
+            break
+        items.extend(output)
+        for call in calls:
+            try:
+                rel = str(json.loads(call.get("arguments") or "{}").get("image_file", ""))
+            except json.JSONDecodeError:
+                rel = ""
+            img = openai_image_output(run_dir, rel)
+            images += isinstance(img, list)
+            items.append({"type": "function_call_output", "call_id": call.get("call_id"), "output": img})
+
+    cost = openai_cost(model, usage)
+    save_json(run_dir / "ai_usage.json", {"mode": "openai-api", "model": model, "turns": turn, "images": images,
+                                           "usage": usage, "estimated_usd": cost})
+    log.info(
+        "OpenAI API (%s): %d runder, %d billeder, %d tokens ind (%d fra cache), %d ud%s",
+        model, turn, images, usage["input_tokens"], usage["cached_tokens"], usage["output_tokens"],
+        f", ca. {cost:.2f} USD" if cost is not None else "",
+    )
+    (run_dir / "ai_output.txt").write_text(json.dumps(output, ensure_ascii=False, indent=1), encoding="utf-8")
+    return text
+
+
+# ChatGPT via Codex CLI ----------------------------------------------------- #
+def find_codex(cfg: dict) -> str | None:
+    """Finder codex.exe. npm installerer kun en .cmd/.ps1-indpakning i stien; den selve
+    programfil ligger dybere. Indpakningen bruges ikke, fordi cmd.exe kan ødelægge
+    argumenter med anførselstegn."""
+    name = cfg.get("codex_command") or "codex"
+    found = shutil.which(name)
+    if found and (sys.platform != "win32" or found.lower().endswith(".exe")):
+        return found
+    roots = []
+    if found:
+        roots.append(Path(found).parent)
+    if os.environ.get("APPDATA"):
+        roots.append(Path(os.environ["APPDATA"]) / "npm")
+    for root in roots:
+        for pattern in ("node_modules/@openai/codex/node_modules/@openai/codex-win32-*/vendor/*/bin/codex.exe",
+                        "node_modules/@openai/codex-win32-*/vendor/*/bin/codex.exe"):
+            hits = sorted(root.glob(pattern))
+            if hits:
+                return str(hits[0])
+    for cand in (Path.home() / ".local" / "bin" / "codex.exe", Path.home() / ".codex" / "bin" / "codex.exe"):
+        if cand.is_file():
+            return str(cand)
+    return None
+
+
+def codex_version(exe: str) -> tuple[int, ...] | None:
+    try:
+        res = subprocess.run([exe, "--version"], capture_output=True, text=True, encoding="utf-8", timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    m = re.search(r"(\d+)\.(\d+)\.(\d+)", res.stdout or "")
+    return tuple(int(x) for x in m.groups()) if m else None
+
+
+def codex_home() -> Path:
+    return Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+
+
+def codex_deny_paths() -> list[Path]:
+    """Mapper, som Codex' kommandoer ikke må læse: agentens login, Codex' og Claudes login og
+    andre typiske steder med nøgler. Hele brugermappen kunne også nægtes, men det gør hver
+    kørsel 1-2 minutter langsommere på Windows."""
+    home = Path.home()
+    paths = [BASE, codex_home(), home / ".claude", home / ".config", home / ".ssh", home / ".aws",
+             home / ".azure", home / ".docker", home / ".gnupg"]
+    if os.environ.get("APPDATA"):
+        paths.append(Path(os.environ["APPDATA"]) / "Microsoft" / "Credentials")
+    if os.environ.get("LOCALAPPDATA"):
+        paths.append(Path(os.environ["LOCALAPPDATA"]) / "Microsoft" / "Credentials")
+    out, seen = [], set()
+    for p in paths:
+        key = str(p).lower()
+        if key not in seen and p.exists():
+            seen.add(key)
+            out.append(p)
+    return out
+
+
+def _toml_str(s: str) -> str:
+    return json.dumps(s, ensure_ascii=False)
+
+
+def codex_args(cfg: dict, exe: str, work: Path, out_file: Path, model: str | None,
+               images: list[Path]) -> list[str]:
+    """Kommandolinjen til codex exec. Kommandoer, Codex kører, må kun læse (ikke skrive), har intet
+    netværk og kan ikke læse de mapper, codex_deny_paths() nævner. Brugerens egen Codex-opsætning,
+    MCP-servere og regler indlæses ikke."""
+    deny = ",".join(f"{_toml_str(p.as_posix())}={_toml_str('deny')}" for p in codex_deny_paths())
+    args = [
+        exe, "exec", "--json", "--ephemeral", "--skip-git-repo-check",
+        "--ignore-user-config", "--ignore-rules",
+        "-C", str(work), "-o", str(out_file),
+        "-c", "default_permissions=aula",
+        "-c", 'permissions.aula.extends=":read-only"',
+        "-c", f"permissions.aula.filesystem={{{deny}}}",
+        "-c", "permissions.aula.network={enabled=false}",
+        "-c", "approval_policy=never",
+        "-c", "web_search=disabled",
+        "-c", "project_doc_max_bytes=0",
+        "-c", f"model_reasoning_effort={cfg.get('openai_effort') or DEFAULT_OPENAI_EFFORT}",
+    ]
+    if sys.platform == "win32":
+        # Den stærke Windows-sandkasse. Den svage kan ikke nægte læsning, og så nægter Codex at køre.
+        args += ["-c", "windows.sandbox=elevated"]
+    for feature in ("shell_tool", "unified_exec", "multi_agent", "apps", "goals", "image_generation"):
+        args += ["-c", f"features.{feature}=false"]
+    if model:
+        args += ["-m", model]
+    for img in images:
+        args += ["-i", str(img)]
+    args.append("-")
+    return args
+
+
+def codex_images(payload_images: list[str], run_dir: Path, work: Path, limit: int) -> list[tuple[str, Path]]:
+    """Kopierer (nedskalerede) billeder til Codex' arbejdsmappe. Codex får dem med i beskeden."""
+    out = []
+    for rel in payload_images[:limit]:
+        img = image_data(run_dir, rel)
+        if isinstance(img, str):
+            continue
+        data, media_type = img
+        ext = {"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp"}[media_type]
+        target = work / f"billede_{len(out) + 1}{ext}"
+        target.write_bytes(data)
+        out.append((rel, target))
+    return out
+
+
+def _codex_events(stdout: str) -> tuple[dict, list[str]]:
+    usage: dict = {}
+    errors: list[str] = []
+    for line in (stdout or "").splitlines():
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if ev.get("type") == "turn.completed":
+            for k, v in (ev.get("usage") or {}).items():
+                usage[k] = usage.get(k, 0) + (v or 0)
+        elif ev.get("type") in ("error", "turn.failed"):
+            msg = ev.get("message") or (ev.get("error") or {}).get("message") or ""
+            errors.append(str(msg))
+    return usage, errors
+
+
+def run_codex(cfg: dict, prompt: str, run_dir: Path, images: list[str] | None = None) -> str:
+    """ChatGPT via Codex CLI (tæller i ChatGPT-abonnementet). Kører i en midlertidig mappe uden for
+    agent-mappen, så login-filerne aldrig ligger ved siden af."""
+    import tempfile
+
+    exe = find_codex(cfg)
+    if not exe:
+        raise RuntimeError(
+            "Kan ikke finde Codex CLI ('codex'). Kør Opsætning fra Start-menuen, eller installer den med: "
+            "npm install -g @openai/codex"
+        )
+    version = codex_version(exe)
+    if version and version < MIN_CODEX_VERSION:
+        raise RuntimeError(
+            f"Codex CLI er for gammel ({'.'.join(map(str, version))}). Opdater med: npm install -g @openai/codex@latest"
+        )
+    work = Path(tempfile.mkdtemp(prefix="aula-codex-"))
+    try:
+        attached = codex_images(images or [], run_dir, work, int(cfg.get("codex_max_images", 12)))
+        if attached:
+            prompt += "\n## Vedhæftede billeder\nBillederne er vedhæftet denne besked i denne rækkefølge:\n" + "\n".join(
+                f"{i}. {rel}" for i, (rel, _) in enumerate(attached, 1)) + "\n"
+        out_file = work / "svar.txt"
+        configured = cfg.get("openai_model") or ""
+        models = [configured] if configured else [DEFAULT_CODEX_MODEL, None]
+        for model in models:
+            args = codex_args(cfg, exe, work, out_file, model, [p for _, p in attached])
+            res = subprocess.run(args, input=prompt, capture_output=True, text=True, encoding="utf-8",
+                                 cwd=work, timeout=1800)
+            usage, errors = _codex_events(res.stdout)
+            out = "\n".join(errors) + "\n" + (res.stderr or "")
+            if res.returncode == 0 and out_file.is_file():
+                break
+            if model and not configured and CODEX_MODEL_PATTERN.search(out):
+                log.info("Abonnementet giver ikke adgang til %s i Codex; bruger standardmodellen", model)
+                continue
+            if CODEX_AUTH_PATTERN.search(out):
+                raise AiLoginRequired(out.strip()[-300:])
+            if "deny-read" in out or "unsandboxed" in out:
+                raise RuntimeError(
+                    "Codex kunne ikke starte sin sikre sandkasse, så kørslen blev stoppet for at beskytte dine "
+                    "login-filer. Åbn PowerShell og kør: codex sandbox setup --elevated --current-user "
+                    "(kræver godkendelse som administrator). Detaljer: " + out.strip()[-300:]
+                )
+            raise RuntimeError(f"Codex fejlede ({res.returncode}): {out.strip()[-800:]}")
+        text = out_file.read_text(encoding="utf-8")
+        (run_dir / "ai_output.txt").write_text(res.stdout or "", encoding="utf-8")
+        save_json(run_dir / "ai_usage.json", {"mode": "codex", "model": model or "standard", "images": len(attached),
+                                               "usage": usage})
+        log.info("Codex (%s): %d tokens ind (%d fra cache), %d ud, %d billeder (tæller i ChatGPT-abonnementet)",
+                 model or "abonnementets standardmodel", usage.get("input_tokens", 0),
+                 usage.get("cached_input_tokens", 0), usage.get("output_tokens", 0), len(attached))
+        return text
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def payload_images(payload: dict) -> list[str]:
+    """Alle image_file-felter i data, i rækkefølge."""
+    found: list[str] = []
+
+    def walk(x):
+        if isinstance(x, dict):
+            if isinstance(x.get("image_file"), str) and x["image_file"] not in found:
+                found.append(x["image_file"])
+            for v in x.values():
+                walk(v)
+        elif isinstance(x, list):
+            for v in x:
+                walk(v)
+
+    walk(payload)
+    return found
+
+
+IMAGE_HINTS = {
+    "api": "Billeder kan ses med værktøjet laes_billede (feltet image_file). Brug det kun efter reglerne for vedhæftninger.",
+    "openai-api": "Billeder kan ses med værktøjet laes_billede (feltet image_file). Brug det kun efter reglerne for vedhæftninger.",
+    "claude-code": "Billeder ligger som filer i denne mappe (feltet image_file). Læs dem kun efter reglerne for vedhæftninger.",
+    "codex": "Billederne er vedhæftet denne besked (se listen sidst). Brug dem kun efter reglerne for vedhæftninger. "
+             "Du har ikke brug for at køre kommandoer.",
+}
+
+
+def run_ai(cfg: dict, payload: dict, run_dir: Path) -> dict:
+    mode = ai_mode(cfg)
     rules = RULES_FILE.read_text(encoding="utf-8")
-    if mode == "api":
-        image_hint = "Billeder kan ses med værktøjet laes_billede (feltet image_file). Brug det kun efter reglerne for vedhæftninger."
-    else:
-        image_hint = "Billeder ligger som filer i denne mappe (feltet image_file). Læs dem kun efter reglerne for vedhæftninger."
     prompt = (
         f"{rules}\n{family_section(cfg)}\n{OUTPUT_SPEC}\n"
         "## Data\n"
-        f"{image_hint}\n\n"
+        f"{IMAGE_HINTS[mode]}\n\n"
         f"```json\n{json.dumps(payload, ensure_ascii=False, indent=1)}\n```\n"
     )
     (run_dir / "prompt.md").write_text(prompt, encoding="utf-8")
-    log.info("Kører Claude (%s) på %d opslag og %d tråde ...", mode, len(payload["posts"]), len(payload["threads"]))
+    log.info("Kører %s (%s) på %d opslag og %d tråde ...", ai_name(cfg), mode, len(payload["posts"]), len(payload["threads"]))
     n_new = sum(1 for x in payload["posts"] if x.get("new", True)) + sum(
         1 for t in payload["threads"] if any(m.get("new") for m in t.get("messages", [])))
     what = [f"{n_new} nye opslag og beskedtråde"] if n_new else []
     if payload.get("week_plan"):
         what.append("ugeplanen")
-    say(f"Claude læser {' og '.join(what) or 'Aula'} (tager typisk 1-3 minutter) …")
-    text = run_claude_api(cfg, prompt, run_dir) if mode == "api" else run_claude_code(cfg, prompt, run_dir)
+    say(f"{ai_name(cfg)} læser {' og '.join(what) or 'Aula'} (tager typisk 1-3 minutter) …")
+    if mode == "api":
+        text = run_claude_api(cfg, prompt, run_dir)
+    elif mode == "openai-api":
+        text = run_openai_api(cfg, prompt, run_dir)
+    elif mode == "codex":
+        text = run_codex(cfg, prompt, run_dir, payload_images(payload))
+    else:
+        text = run_claude_code(cfg, prompt, run_dir)
     m = re.search(r"```json\s*(\{.*\})\s*```", text, re.S)
     raw = m.group(1) if m else text[text.find("{"): text.rfind("}") + 1]
     result = json.loads(raw)
-    save_json(run_dir / "claude_result.json", result)
+    save_json(run_dir / "ai_result.json", result)
     return result
+
 
 
 # --------------------------------------------------------------------------- #
@@ -1895,36 +2294,116 @@ def heading(text: str) -> None:
     print(f"\n== {text}")
 
 
-def setup_claude(cfg: dict, force_api: bool = False) -> None:
-    heading("2. Claude")
-    has_code = find_claude(cfg) is not None
-    keep_api = claude_mode(cfg) == "api" and bool(api_key(cfg))
-    if not force_api and has_code and not keep_api:
-        cfg["claude_mode"] = "claude-code"
-        print("  OK: bruger Claude Code på denne computer (dit Claude-abonnement).")
-        print(f"  Vil du hellere bruge en API-nøgle, så kør: {RUN} opsaet --api")
-        return
-    if not force_api and not has_code and not api_key(cfg):
-        print("  Claude Code er ikke installeret, så agenten bruger en API-nøgle.")
-    cfg["claude_mode"] = "api"
-    print("  Opret en nøgle på https://console.anthropic.com/settings/keys (kræver betalingskort og")
-    print("  lidt kredit, fx 5 dollar). Sæt gerne en månedlig grænse under Limits.")
+def ask_key(cfg: dict, field: str, current: str, check) -> None:
+    """Beder om en API-nøgle, tjekker den og gemmer den krypteret."""
     while True:
-        current = api_key(cfg)
         key = getpass.getpass("  Indsæt nøglen (vises ikke" + (", Enter = behold den gemte" if current else "") + "): ").strip()
         key = key or current
         if not key:
             print("  Ingen nøgle indsat.")
             continue
-        err = check_api_key(key)
+        err = check(key)
         if err is None:
-            cfg["anthropic_api_key"] = protect_text(key)
+            cfg[field] = protect_text(key)
             print("  OK: nøglen virker.")
             return
         print(f"  Nøglen virker ikke: {err}")
         if not ask_yes("  Prøv igen?", True):
-            cfg["anthropic_api_key"] = protect_text(key)
+            cfg[field] = protect_text(key)
             return
+
+
+def set_mode(cfg: dict, mode: str) -> None:
+    cfg["ai_mode"] = mode
+    cfg.pop("claude_mode", None)
+
+
+def setup_ai(cfg: dict, force_api: bool = False, provider: str | None = None) -> None:
+    """Vælger AI. Claude Code eller Codex bruges automatisk, hvis de er installeret."""
+    heading("2. AI (Claude eller ChatGPT)")
+    configured = bool(cfg.get("ai_mode") or cfg.get("claude_mode"))
+    if provider is None and configured:
+        provider = "chatgpt" if is_openai(cfg) else "claude"
+    has_claude = find_claude(cfg) is not None
+    has_codex = find_codex(cfg) is not None
+    if provider is None:
+        if has_claude:
+            provider = "claude"
+        elif has_codex:
+            provider = "chatgpt"
+        else:
+            print("  Agenten bruger en AI til at læse Aula. Det kan være Claude (Anthropic) eller ChatGPT (OpenAI).")
+            provider = ask_choice("  Hvilken bruger du? claude eller chatgpt", ["claude", "chatgpt"], "claude")
+    if provider == "chatgpt":
+        setup_openai(cfg, force_api, has_codex)
+    else:
+        setup_claude(cfg, force_api, has_claude)
+
+
+def setup_claude(cfg: dict, force_api: bool = False, has_code: bool | None = None) -> None:
+    if has_code is None:
+        has_code = find_claude(cfg) is not None
+    keep_api = ai_mode(cfg) == "api" and bool(api_key(cfg))
+    if not force_api and has_code and not keep_api:
+        set_mode(cfg, "claude-code")
+        print("  OK: bruger Claude Code på denne computer (dit Claude-abonnement).")
+        print(f"  Vil du hellere bruge en API-nøgle, så kør: {RUN} opsaet --api")
+        return
+    if not force_api and not has_code and not api_key(cfg):
+        print("  Claude Code er ikke installeret, så agenten bruger en API-nøgle fra Anthropic.")
+    set_mode(cfg, "api")
+    print("  Opret en nøgle på https://console.anthropic.com/settings/keys (kræver betalingskort og")
+    print("  lidt kredit, fx 5 dollar). Sæt gerne en månedlig grænse under Limits.")
+    ask_key(cfg, "anthropic_api_key", api_key(cfg), check_api_key)
+
+
+def codex_selftest(cfg: dict) -> tuple[str | None, str]:
+    """Kører Codex på en lille prompt. Returnerer (fejltekst eller None, model)."""
+    import tempfile
+
+    run_dir = Path(tempfile.mkdtemp(prefix="aula-codex-test-"))
+    try:
+        text = run_codex(cfg, 'Svar kun med denne JSON: {"ok": true}', run_dir)
+        if '"ok"' not in text:
+            return f"uventet svar: {text[:200]}", ""
+        model = load_json(run_dir / "ai_usage.json", {}).get("model", "")
+        return None, model
+    except AiLoginRequired as e:
+        return f"Codex er ikke logget ind ({_short(e)}). Åbn PowerShell, kør: codex login", ""
+    except Exception as e:  # noqa: BLE001
+        return _short(e), ""
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def setup_openai(cfg: dict, force_api: bool = False, has_codex: bool | None = None) -> None:
+    if has_codex is None:
+        has_codex = find_codex(cfg) is not None
+    keep_api = ai_mode(cfg) == "openai-api" and bool(openai_key(cfg))
+    if not force_api and has_codex and not keep_api:
+        set_mode(cfg, "codex")
+        print("  Tester Codex (ChatGPT) på denne computer ...")
+        err, model = codex_selftest(cfg)
+        if err is None:
+            print("  OK: bruger Codex med dit ChatGPT-abonnement"
+                  + (f" ({model})." if model and model != "standard" else " (abonnementets standardmodel)."))
+            if model == "standard":
+                print("  Dit abonnement giver kun Codex' mindre model (fx Luna med Go eller Free). Den overser")
+                print("  flere ting end Claude Opus og GPT-6.1 Sol. Med ChatGPT Plus bruges GPT-6.1 Sol.")
+            print("  Slå træning fra i ChatGPT: Indstillinger > Datastyring > 'Gør modellen bedre for alle'.")
+            print(f"  Vil du hellere bruge en API-nøgle, så kør: {RUN} opsaet --api --ai chatgpt")
+            return
+        print(f"  Codex virker ikke endnu: {err}")
+        if not ask_yes("  Vil du bruge en OpenAI API-nøgle i stedet?", False):
+            print("  Agenten bruger Codex. Ret fejlen ovenfor, og kør Opsætning igen.")
+            return
+    elif not force_api and not has_codex and not openai_key(cfg):
+        print("  Codex CLI er ikke installeret, så agenten bruger en API-nøgle fra OpenAI.")
+    set_mode(cfg, "openai-api")
+    print("  Opret en nøgle på https://platform.openai.com/api-keys (kræver betalingskort og lidt")
+    print("  kredit, fx 5 dollar). Et ChatGPT-abonnement giver ikke API-adgang; det betales for sig.")
+    print("  Sæt gerne en månedlig grænse under Limits.")
+    ask_key(cfg, "openai_api_key", openai_key(cfg), check_openai_key)
 
 
 def setup_children(found: dict, existing: dict | None) -> list[dict]:
@@ -1967,13 +2446,14 @@ def check_protection() -> str | None:
     return None
 
 
-def cmd_setup(existing: dict | None, force_api: bool = False) -> int:
+def cmd_setup(existing: dict | None, force_api: bool = False, provider: str | None = None) -> int:
     print("Opsætning af Aula-kalenderagenten. Det tager et par minutter.")
     heading("Dine data")
     print("  Dit login til Aula og Outlook gemmes krypteret her på computeren. Det kan kun bruges")
     print("  af din Windows-bruger og sendes ikke til nogen. Din MitID-adgangskode gemmes slet ikke.")
-    print("  For at finde datoerne sender agenten ugens opslag og beskeder fra Aula til Claude")
-    print("  (Anthropic), som læser dem. Ellers deles intet med andre end din egen Outlook.")
+    print("  For at finde datoerne sender agenten ugens opslag og beskeder fra Aula til den AI, du")
+    print("  vælger (Claude fra Anthropic eller ChatGPT fra OpenAI), som læser dem. Ellers deles intet")
+    print("  med andre end din egen Outlook.")
     err = check_protection()
     if err:
         print(f"STOP: Windows-krypteringen af login-filer virker ikke på denne computer ({err}).")
@@ -1985,6 +2465,8 @@ def cmd_setup(existing: dict | None, force_api: bool = False) -> int:
         cfg["feeds"] = []
         cfg["family_notes"] = []
         cfg["parent"] = {}
+        cfg.pop("ai_mode", None)
+        cfg.pop("claude_mode", None)
 
     heading("1. Aula-login med MitID")
     cfg["mitid_username"] = ask("Dit MitID-brugernavn (ikke dit Aula-brugernavn)", cfg.get("mitid_username", ""), True)
@@ -2016,7 +2498,7 @@ def cmd_setup(existing: dict | None, force_api: bool = False) -> int:
     if parent["contact_parent_in"]:
         print(f"  Du er kontaktforælder i: {', '.join(parent['contact_parent_in'])}")
 
-    setup_claude(cfg, force_api)
+    setup_ai(cfg, force_api, provider)
     save_json(CONFIG_FILE, cfg)
 
     heading("3. Outlook-login")
@@ -2105,16 +2587,30 @@ AULA_LOGIN_HOW = (
 )
 
 
-def claude_login_how(cfg: dict) -> str:
-    if claude_mode(cfg) == "api":
+def ai_login_how(cfg: dict) -> str:
+    mode = ai_mode(cfg)
+    if mode == "api":
         return (
             "Claude API afviste nøglen. Lav evt. en ny nøgle på console.anthropic.com, "
             f"og ret anthropic_api_key i config.json (eller kør: {RUN} opsaet). Kør derefter: {RUN} weekly"
+        )
+    if mode == "openai-api":
+        return (
+            "OpenAI API afviste nøglen. Lav evt. en ny nøgle på platform.openai.com/api-keys, "
+            f"og ret openai_api_key i config.json (eller kør: {RUN} opsaet). Kør derefter: {RUN} weekly"
+        )
+    if mode == "codex":
+        return (
+            "Åbn PowerShell, kør: codex login, og log ind med din ChatGPT-konto i browseren. "
+            f"Kør derefter i agent-mappen: {RUN} weekly"
         )
     return (
         "Åbn PowerShell, kør: claude, skriv /login og følg anvisningen, og afslut med /exit. "
         f"Kør derefter i agent-mappen: {RUN} weekly"
     )
+
+
+claude_login_how = ai_login_how  # gammelt navn
 
 
 def _short(e: BaseException) -> str:
@@ -2214,12 +2710,12 @@ def cmd_weekly(cfg: dict, state: dict, dry: bool, days: int | None) -> int:
                 "week_plan": {k: v for k, v in week_plan.items() if k not in ("raw", "widgets")} if has_plan else None,
                 **data,
             }
-            result = run_claude(cfg, payload, run_dir)
-        except ClaudeLoginRequired:
-            log.warning("Claude-login er udløbet eller API-nøglen er afvist")
+            result = run_ai(cfg, payload, run_dir)
+        except AiLoginRequired:
+            log.warning("%s-login er udløbet eller API-nøglen er afvist", ai_name(cfg))
             errors.append(
-                "Claude kunne ikke logge ind, så opslag og beskeder blev ikke gennemgået. "
-                "Sådan gør du: " + claude_login_how(cfg)
+                f"{ai_name(cfg)} kunne ikke logge ind, så opslag og beskeder blev ikke gennemgået. "
+                "Sådan gør du: " + ai_login_how(cfg)
             )
             blocking = True
             result = None
@@ -2328,14 +2824,15 @@ def main() -> int:
     ap.add_argument("command", choices=["opsaet", "login-aula", "login-outlook", "daily", "weekly", "manual", "ugeplan"])
     ap.add_argument("--dry-run", action="store_true", help="Vis hvad der ville ske, uden at skrive noget")
     ap.add_argument("--days", type=int, default=None, help="Antal dage tilbage (kun weekly)")
-    ap.add_argument("--api", action="store_true", help="Brug API-nøgle i stedet for Claude Code (kun opsaet)")
+    ap.add_argument("--api", action="store_true", help="Brug API-nøgle i stedet for Claude Code eller Codex (kun opsaet)")
+    ap.add_argument("--ai", choices=["claude", "chatgpt"], default=None, help="Vælg AI (kun opsaet)")
     args = ap.parse_args()
 
     setup_logging()
     cfg = load_json(CONFIG_FILE, None)
     if args.command == "opsaet":
         try:
-            return cmd_setup(cfg, args.api)
+            return cmd_setup(cfg, args.api, args.ai)
         except (KeyboardInterrupt, EOFError):
             print("\nAfbrudt. Intet er gemt.")
             return 1

@@ -54,7 +54,7 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) { Stop-Med "uv kunne ik
 Ok (uv --version)
 
 if (-not $KunGenveje) {
-# 3. Claude Code (hvis den mangler, og der ikke allerede bruges en API-nøgle)
+# 3. AI: Claude Code eller Codex (ChatGPT), hvis ingen af dem findes, og der ikke bruges API-nøgle
 function Find-Claude {
     $c = Get-Command claude -ErrorAction SilentlyContinue
     if ($c) { return $c.Source }
@@ -62,34 +62,78 @@ function Find-Claude {
     if (Test-Path $f) { return $f }
     return $null
 }
-$brugerApi = $false
-if (Test-Path (Join-Path $Dir "config.json")) {
-    try { $brugerApi = ((Get-Content (Join-Path $Dir "config.json") -Raw -Encoding UTF8 | ConvertFrom-Json).claude_mode -eq "api") } catch {}
+function Find-Codex {
+    $c = Get-Command codex -ErrorAction SilentlyContinue
+    if ($c) { return $c.Source }
+    return $null
 }
-if (-not (Find-Claude) -and -not $brugerApi) {
-    Trin "Claude"
-    Write-Host "  Agenten bruger Claude til at læse Aula for dig. Har du et betalt Claude-abonnement"
-    Write-Host "  (Pro eller Max), er Claude Code den nemmeste vej, og det koster ikke ekstra."
-    Write-Host "  Uden abonnement bruger du i stedet en API-nøgle (ca. 6-10 kr. om måneden)."
-    $svar = Read-Host "  Har du et Claude-abonnement, og skal Claude Code installeres nu? [J/n]"
-    if ($svar -notmatch '^(n|nej|no)$') {
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://claude.ai/install.ps1 | iex"
-        Opdater-Sti
-        $claude = Find-Claude
-        if (-not $claude) {
-            Write-Host "  Claude Code kunne ikke installeres. Du kan bruge en API-nøgle i stedet." -ForegroundColor Yellow
-        } else {
-            Ok "Claude Code installeret"
-            Write-Host ""
-            Write-Host "  Nu skal du logge ind i Claude Code én gang:" -ForegroundColor Cyan
-            Write-Host "   1. Svar på de få spørgsmål (Enter er fint), og vælg login med dit Claude-abonnement."
-            Write-Host "   2. Log ind i browseren, der åbner."
-            Write-Host "   3. Når Claude Code er klar, skriv /exit og tryk Enter. Så fortsætter opsætningen."
-            Read-Host "  Tryk Enter for at starte Claude Code" | Out-Null
-            & $claude
-            Ok "Claude Code er klar"
-        }
+function Installer-Claude {
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://claude.ai/install.ps1 | iex"
+    Opdater-Sti
+    $claude = Find-Claude
+    if (-not $claude) {
+        Write-Host "  Claude Code kunne ikke installeres. Du kan bruge en API-nøgle i stedet." -ForegroundColor Yellow
+        return
     }
+    Ok "Claude Code installeret"
+    Write-Host ""
+    Write-Host "  Nu skal du logge ind i Claude Code én gang:" -ForegroundColor Cyan
+    Write-Host "   1. Svar på de få spørgsmål (Enter er fint), og vælg login med dit Claude-abonnement."
+    Write-Host "   2. Log ind i browseren, der åbner."
+    Write-Host "   3. Når Claude Code er klar, skriv /exit og tryk Enter. Så fortsætter opsætningen."
+    Read-Host "  Tryk Enter for at starte Claude Code" | Out-Null
+    & $claude
+    Ok "Claude Code er klar"
+}
+function Installer-Codex {
+    if (-not (Find-Codex)) {
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://chatgpt.com/codex/install.ps1 | iex"
+        Opdater-Sti
+    }
+    $codex = Find-Codex
+    if (-not $codex) {
+        Write-Host "  Codex kunne ikke installeres. Du kan bruge en OpenAI API-nøgle i stedet." -ForegroundColor Yellow
+        return
+    }
+    Ok "Codex installeret"
+    Write-Host ""
+    Write-Host "  Nu skal du logge ind i Codex med din ChatGPT-konto én gang:" -ForegroundColor Cyan
+    Write-Host "   1. Vælg 'Sign in with ChatGPT', hvis du bliver spurgt."
+    Write-Host "   2. Log ind i browseren, der åbner. Vinduet fortsætter selv."
+    Read-Host "  Tryk Enter for at logge ind" | Out-Null
+    & $codex login
+    Write-Host ""
+    Write-Host "  Codex skal have en sikker sandkasse, så ChatGPT ikke kan læse dine login-filer." -ForegroundColor Cyan
+    Write-Host "  Windows beder om godkendelse som administrator. Sig ja."
+    & $codex sandbox setup --elevated --current-user
+    Write-Host ""
+    Write-Host "  Slå træning fra i ChatGPT, så Aula-indhold ikke bruges til at træne modeller:" -ForegroundColor Cyan
+    Write-Host "  chatgpt.com > Indstillinger > Datastyring > 'Gør modellen bedre for alle' = fra."
+    Read-Host "  Tryk Enter, når det er gjort" | Out-Null
+}
+$mode = ""
+if (Test-Path (Join-Path $Dir "config.json")) {
+    try {
+        $c = Get-Content (Join-Path $Dir "config.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+        $mode = if ($c.ai_mode) { $c.ai_mode } else { $c.claude_mode }
+    } catch {}
+}
+$aiValg = ""
+if (-not $mode -and -not (Find-Claude) -and -not (Find-Codex)) {
+    Trin "AI (Claude eller ChatGPT)"
+    Write-Host "  Agenten bruger en AI til at læse Aula for dig. Hvilket abonnement har du?"
+    Write-Host "   1. Claude (Pro eller Max): Claude Code installeres. Det koster ikke ekstra."
+    Write-Host "   2. ChatGPT (Plus, Pro, Go eller Free): Codex installeres. Det koster ikke ekstra."
+    Write-Host "      Med Go og Free bruges en mindre model, som overser flere ting. Plus anbefales."
+    Write-Host "   3. Ingen af dem: du bruger en API-nøgle og betaler pr. kørsel (ca. 2-10 kr. om måneden)."
+    $svar = Read-Host "  Vælg 1, 2 eller 3 [1]"
+    if ($svar -eq "2") { $aiValg = "chatgpt"; Installer-Codex }
+    elseif ($svar -eq "3") { $aiValg = "" }
+    else { $aiValg = "claude"; Installer-Claude }
+} elseif ($mode -eq "codex" -and -not (Find-Codex)) {
+    Trin "ChatGPT (Codex)"
+    $aiValg = "chatgpt"
+    Installer-Codex
 }
 
 # 4. Pakker til agenten
@@ -97,8 +141,9 @@ uv run --python-preference only-system agent.py --help | Out-Null
 if ($LASTEXITCODE -ne 0) { Stop-Med "Kunne ikke hente agentens pakker. Tjek internetforbindelsen og kør scriptet igen." }
 Ok "pakker hentet"
 
-# 5. Guiden: MitID, Claude og Outlook. Børn, klasser og mailadresse findes automatisk.
-uv run --python-preference only-system agent.py opsaet
+# 5. Guiden: MitID, AI og Outlook. Børn, klasser og mailadresse findes automatisk.
+if ($aiValg) { uv run --python-preference only-system agent.py opsaet --ai $aiValg }
+else { uv run --python-preference only-system agent.py opsaet }
 if ($LASTEXITCODE -ne 0) { Stop-Med "Opsætningen blev ikke færdig. Kør scriptet igen; det, der er gemt, bliver genbrugt." }
 }
 

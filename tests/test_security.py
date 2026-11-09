@@ -94,6 +94,83 @@ check("Claude Code: Opus som standard", a[a.index("--model") + 1] == "claude-opu
 agent.run_claude_code({"claude_command": "claude", "claude_model": "claude-sonnet-5-5"}, "prompt", rd)
 check("Claude Code: claude_model bruges", seen["args"][seen["args"].index("--model") + 1] == "claude-sonnet-5-5")
 
+# 5b. Codex (ChatGPT) kører uden for agent-mappen med læseforbud, uden netværk og uden brugerens opsætning
+calls = []
+def fake_codex(args, **kw):
+    if args[1:] == ["--version"]:
+        return N(returncode=0, stdout="codex-cli 0.167.0", stderr="")
+    calls.append({"args": args, "cwd": kw.get("cwd"), "input": kw.get("input")})
+    reply = CODEX_REPLIES.pop(0)
+    if reply[0] == 0:
+        Path(args[args.index("-o") + 1]).write_text('```json\n{"calendar": []}\n```', encoding="utf-8")
+    return N(returncode=reply[0], stdout=reply[1], stderr=reply[2])
+agent.subprocess.run = fake_codex
+agent.find_codex = lambda cfg: "/bin/codex"
+OK_EVENTS = '{"type":"turn.completed","usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":10}}'
+CODEX_REPLIES = [(0, OK_EVENTS, "")]
+from PIL import Image  # noqa: E402
+(rd / "attachments").mkdir(exist_ok=True)
+Image.new("RGB", (3000, 2000), "red").save(rd / "attachments" / "foto.jpg")
+text = agent.run_codex({}, "prompt æøå", rd, ["attachments/foto.jpg", "attachments/findes_ikke.jpg"])
+c = calls[-1]; a = c["args"]
+def cval(prefix):
+    return [a[i + 1] for i in range(len(a) - 1) if a[i] == "-c" and a[i + 1].startswith(prefix)]
+check("Codex: svaret læses fra -o-filen", '"calendar"' in text)
+check("Codex: brugerens opsætning og regler ignoreres", "--ignore-user-config" in a and "--ignore-rules" in a and "--ephemeral" in a)
+check("Codex: læse-profil med forbud", cval("default_permissions=") == ["default_permissions=aula"]
+      and cval("permissions.aula.extends=") == ['permissions.aula.extends=":read-only"'])
+deny = cval("permissions.aula.filesystem=")[0]
+check("Codex: agent-mappen er forbudt", json.dumps(agent.BASE.as_posix()) + '="deny"' in deny)
+check("Codex: ingen netværk, ingen websøgning, ingen godkendelser",
+      cval("permissions.aula.network=") == ["permissions.aula.network={enabled=false}"]
+      and cval("web_search=") == ["web_search=disabled"] and cval("approval_policy=") == ["approval_policy=never"])
+check("Codex: shell og andre værktøjer slået fra", "features.shell_tool=false" in a and "features.unified_exec=false" in a)
+check("Codex: ingen farlige flag", not any(x in a for x in ("--yolo", "--dangerously-bypass-approvals-and-sandbox", "danger-full-access")))
+check("Codex: arbejdsmappe uden for agent-mappen og ryddet op bagefter",
+      agent.BASE.resolve() not in Path(c["cwd"]).resolve().parents and not Path(c["cwd"]).exists()
+      and a[a.index("-C") + 1] == str(c["cwd"]))
+check("Codex: prompt via stdin med billedliste", a[-1] == "-" and c["input"].startswith("prompt æøå")
+      and "1. attachments/foto.jpg" in c["input"] and "findes_ikke" not in c["input"])
+check("Codex: kun eksisterende billede vedhæftet", a.count("-i") == 1)
+check("Codex: GPT-6.1 Sol prøves først", a[a.index("-m") + 1] == "gpt-6.1-sol")
+check("Codex: forbrug gemt", json.loads((rd / "ai_usage.json").read_text(encoding="utf-8"))["usage"]["input_tokens"] == 100)
+
+CODEX_REPLIES = [(1, '{"type":"error","message":"The \'gpt-6.1-sol\' model is not supported when using Codex with a ChatGPT account."}', ""),
+                 (0, OK_EVENTS, "")]
+calls.clear()
+agent.run_codex({}, "p", rd)
+check("Codex: falder tilbage til abonnementets model (Go/Free)", len(calls) == 2 and "-m" not in calls[1]["args"]
+      and json.loads((rd / "ai_usage.json").read_text(encoding="utf-8"))["model"] == "standard")
+CODEX_REPLIES = [(1, '{"type":"error","message":"model_not_found"}', "")]
+try:
+    agent.run_codex({"openai_model": "gpt-6-astra"}, "p", rd); ok = False
+except RuntimeError:
+    ok = True
+check("Codex: valgt model bruges uden tilbagefald", ok and calls[-1]["args"][calls[-1]["args"].index("-m") + 1] == "gpt-6-astra")
+CODEX_REPLIES = [(1, "", "failed to prepare windows sandbox wrapper: cannot enforce deny-read restrictions directly; refusing to run unsandboxed")]
+try:
+    agent.run_codex({"openai_model": "x"}, "p", rd); msg = ""
+except RuntimeError as e:
+    msg = str(e)
+check("Codex: svag sandkasse stopper kørslen med vejledning", "codex sandbox setup --elevated" in msg)
+CODEX_REPLIES = [(1, '{"type":"error","message":"Not logged in. Run codex login"}', "")]
+try:
+    agent.run_codex({"openai_model": "x"}, "p", rd); ok = False
+except agent.AiLoginRequired:
+    ok = True
+check("Codex: manglende login giver login-fejl", ok)
+agent.subprocess.run = lambda args, **kw: N(returncode=0, stdout="codex-cli 0.128.0", stderr="")
+try:
+    agent.run_codex({}, "p", rd); msg = ""
+except RuntimeError as e:
+    msg = str(e)
+check("Codex: for gammel version afvises", "for gammel" in msg)
+
+# 5c. OpenAI-nøgle krypteres som Anthropic-nøglen
+cfg = {"openai_api_key": "sk-proj-klar", "ai_mode": "openai-api"}
+check("OpenAI-nøgle: krypteres", agent.protect_config_secrets(cfg) and cfg["openai_api_key"].startswith("DPAPI1:"))
+check("OpenAI-nøgle: bruges dekrypteret", agent.openai_key(cfg) == "sk-proj-klar")
+
 check("Selvtest: virker med kryptering", agent.check_protection() is None)
 real = agent._dpapi
 agent._dpapi = lambda d, p: (_ for _ in ()).throw(OSError("ingen DPAPI"))
