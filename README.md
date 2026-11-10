@@ -299,6 +299,14 @@ Krypteringen er bundet til din Windows-bruger på netop denne computer. En kopi 
   - Med Codex sender Codex-programmet Aula-indholdet til OpenAI og får svaret tilbage; det er den eneste netværkstrafik. Selve modellen kører i en midlertidig mappe uden for agent-mappen, i en sikker Windows-sandkasse: MXC på nyere Windows 11, ellers Codex' egen "elevated"-sandkasse. Kommandoer, den forsøger at køre på computeren, kan ikke skrive filer, har intet netværk og kan ikke læse filer i din brugermappe (fx Dokumenter, Skrivebord, browserprofiler og login-filer) ud over den midlertidige mappe. Med den ældre sandkasse kan de se navne på mapper og filer, men ikke indholdet; med MXC heller ikke navnene. Agenten slår Codex' shell, websøgning og andre værktøjer fra og bruger ikke din egen Codex-opsætning, MCP-servere eller regler. Kan sandkassen ikke starte, kører agenten ikke Codex, og den skifter aldrig til en svagere sandkasse.
   - Med API-nøgle kan AI'en kun se de billeder, agenten selv sender.
 
+### Sendes data til USA, og er det lovligt?
+
+Ja, Aula-indholdet sendes til Claude (Anthropic) eller ChatGPT (OpenAI), og begge behandler data i USA. Det gælder også beskeder fra lærere og andre forældre, navne på andre børn og billeder i vedhæftninger. Dine logins og din kalender bliver på din egen computer, og intet sendes til mig.
+
+**Slå træning fra.** Se ovenfor, hvor indstillingen findes i Claude og ChatGPT. Med træning slået fra slettes data efter højst 30 dage. Med en API-nøgle bruges data aldrig til træning. Med træning slået til kan andre familiers beskeder indgå i træningsdata i op til 5 år, og det synes jeg ikke, man skal gøre.
+
+**GDPR:** Bruger du agenten som privatperson til dine egne børn, er det efter min vurdering omfattet af GDPR's undtagelse for rent personlige aktiviteter (artikel 2, stk. 2, litra c). Anthropic og OpenAI har selv ansvaret for deres behandling af data. Jeg er ikke jurist. Bruger du den i en officiel rolle (skole, forening, institution), gælder undtagelsen ikke.
+
 ### Sådan trækker du adgangen tilbage
 
 - **Outlook:** account.microsoft.com > Privatliv > Apps og tjenester, fjern "Microsoft Graph Command Line Tools". Slet `graph_token_cache.dat`.
