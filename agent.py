@@ -1488,15 +1488,39 @@ def handle_attachments(atts, att_dir: Path, client: httpx.Client, text: str = ""
         result.append(item)
     if to_read:
         try:
-            texts = ocr_images([p for _, p in to_read]) or {}
+            texts = ocr_images([p for _, p in to_read])
         finally:
             for _, p in to_read:  # Billedet har gjort sit; kun teksten går videre.
                 p.unlink(missing_ok=True)
+        if texts is None:
+            # Tekstgenkendelsen virker ikke her. Sig det til AI'en og (via ocr_problem) til forælderen.
+            _ocr_state["unread"] = _ocr_state.get("unread", 0) + len(to_read)
+            for item, _ in to_read:
+                item["note"] = "billedet kunne ikke læses på computeren (tekstgenkendelse virker ikke)"
+            return result
         for item, p in to_read:
             found = (texts.get(p) or "").strip()
             if len(found) >= IMAGE_TEXT_MIN:
                 item["image_text"] = found[:IMAGE_TEXT_MAX]
     return result
+
+
+def ocr_problem() -> str | None:
+    """Besked til ugemailen, hvis billeder ikke kunne læses, eller dansk tekstgenkendelse mangler."""
+    if _ocr_state.get("unread"):
+        n = _ocr_state["unread"]
+        return (
+            f"{n} billede{'r' if n != 1 else ''} i Aula blev ikke læst, fordi Windows' tekstgenkendelse ikke "
+            "virker på denne computer (se logs\\agent.log). Invitationer, der kun findes som billede, kan derfor "
+            'mangle, så tjek selv Aula. Vil du hellere sende billederne til AI\'en, så sæt "send_images": "auto" '
+            "i config.json."
+        )
+    if _ocr_state.get("warned"):
+        return (
+            "Windows mangler dansk tekstgenkendelse, så æ, ø og å i billeder kan blive læst forkert. Tilføj dansk "
+            "under Indstillinger > Tid og sprog > Sprog og område."
+        )
+    return None
 
 
 OLD_MESSAGES_CONTEXT = 30
@@ -3133,7 +3157,9 @@ def cmd_weekly(cfg: dict, state: dict, dry: bool, days: int | None) -> int:
                 except Exception as e:  # noqa: BLE001
                     log.error("Kunne ikke oprette %s: %s", item, e)
                     errors.append(f"Kunne ikke lægge '{item.get('title', '?')}' ({item.get('date', '?')}) i kalenderen: {_short(e)}")
-            mail_items = result.get("weekly_mail", [])
+            mail_items = [m for m in result.get("weekly_mail", []) or [] if isinstance(m, dict)]
+            if ocr_problem():
+                mail_items.append({"category": "billeder", "children": [], "text": ocr_problem()})
             husk = [h for h in result.get("husk", []) or [] if isinstance(h, dict) and h.get("text")]
             fri = [f for f in result.get("fri", []) or [] if isinstance(f, dict) and f.get("date")]
     elif posts is not None:

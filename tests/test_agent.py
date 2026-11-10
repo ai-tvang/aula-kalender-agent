@@ -234,6 +234,13 @@ check("OCR: uden OCR sendes hverken billede eller tekst", all(r.get("image_not_s
 many = [{"id": i, "name": f"f{i}.jpg", "file": {"url": f"https://x/{i}"}} for i in range(25)]
 fh3 = FakeHttp()
 agent.handle_attachments(many, att_dir, fh3, "", "text")
+check("OCR: uden OCR får AI'en en note, og forælderen en besked", all("kunne ikke læses" in r.get("note", "") for r in res4)
+      and "blev ikke læst" in (agent.ocr_problem() or "") and str(len(res4)) in agent.ocr_problem())
+agent._ocr_state.clear()
+check("OCR: ingen besked, når alt virker", agent.ocr_problem() is None)
+agent._ocr_state["warned"] = True
+check("OCR: besked når dansk mangler", "dansk tekstgenkendelse" in agent.ocr_problem())
+agent._ocr_state.clear()
 check("OCR: højst 10 billeder hentes pr. opslag", len(fh3.urls) == agent.IMAGE_TEXT_MAX_FILES)
 check("OCR: uden Windows findes OCR ikke (None)", agent.sys.platform == "win32" or real_ocr([att_dir / "x.png"]) is None)
 
