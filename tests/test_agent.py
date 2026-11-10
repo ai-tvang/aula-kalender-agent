@@ -185,6 +185,36 @@ pt = agent.prepare_input([], [long_thread], since_t, work / "runs" / "pt")["thre
 check("Lange tråde: alle nye + 30 ældre", len(pt["messages"]) == 31 and pt["older_messages_omitted"] == 70
       and pt["messages"][-1]["text"] == "ny" and pt["messages"][0]["text"] == "gammel 70")
 
+# 2f. Deltagerlister og billeder sendes ikke til AI'en
+th = {"thread_id": 7, "subject": "Fødselsdag", "participant_count": 42, "regarding_children": ["Emma"],
+      "participants": ["Anne Hansen (Sofie)"], "messages": [{"send_datetime": "2030-11-09T08:00:00+00:00", "content_html": "Hej"}]}
+pth = agent.prepare_input([], [th], since_t, work / "runs" / "pth", cfg)["threads"][0]
+check("Deltagere: kun antal, ingen navneliste", pth.get("participant_count") == 42 and "participants" not in pth)
+check("Deltagere: egne børn fra config", agent.own_children(cfg, ["Emma Testesen", "Sofie Hansen", "Emma T"]) == ["Emma"])
+check("Billeder auto: kort invitation sendes", agent.allow_images("auto", "Emma inviterer til fødselsdag", 1))
+check("Billeder auto: fotos fra tur sendes ikke", not agent.allow_images("auto", "Her er billeder fra turen", 2))
+check("Billeder auto: mange billeder sendes ikke", not agent.allow_images("auto", "", 4))
+check("Billeder auto: lang tekst uden henvisning sendes ikke", not agent.allow_images("auto", "x" * 400, 1))
+check("Billeder auto: lang tekst med invitation sendes", agent.allow_images("auto", "x" * 400 + " se invitationen", 1))
+check("Billeder never/always", not agent.allow_images("never", "", 1) and agent.allow_images("always", "billeder fra festen", 9))
+check("Billeder: ukendt værdi giver auto", agent.images_mode({"send_images": "måske"}) == "auto" and agent.images_mode(None) == "auto")
+
+class FakeHttp:
+    def __init__(s): s.urls = []
+    def get(s, url):
+        s.urls.append(url)
+        return N(content=b"x", raise_for_status=lambda: None)
+fh = FakeHttp()
+att_dir = work / "runs" / "att"; att_dir.mkdir(parents=True, exist_ok=True)
+photos = [{"id": i, "name": f"foto{i}.jpg", "file": {"url": f"https://x/{i}"}} for i in range(5)]
+res = agent.handle_attachments(photos, att_dir, fh, "Billeder fra juleklip", "auto")
+check("Billeder: frasorterede hentes ikke", fh.urls == [] and all(r.get("image_not_sent") for r in res)
+      and not any("image_file" in r for r in res))
+inv = [{"id": 9, "name": "invitation.png", "file": {"url": "https://x/9"}}]
+res2 = agent.handle_attachments(inv, att_dir, fh, "Se invitationen", "auto")
+check("Billeder: invitation hentes og sendes", fh.urls == ["https://x/9"] and res2[0].get("image_file") == "attachments/9_invitation.png")
+check("Billeder: payload_images springer frasorterede over", agent.payload_images({"a": res + res2}) == ["attachments/9_invitation.png"])
+
 # 3. weekly med husk, og med login-fejl i begge tilstande
 agent.sync_feeds = lambda *a: {"ny": 0}
 agent.sync_manual = lambda *a: None

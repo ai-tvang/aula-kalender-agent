@@ -7,7 +7,7 @@ Du kan rette i reglerne i denne fil, så de passer til jer. Ret ikke i afsnittet
 
 ## Hvilket barn gælder det?
 1. Opslag: brug "groups". Klassens gruppe og årgang peger på det barn, der går i klassen (se "Aula-grupper/ord" under Familien). En skolebred gruppe gælder alle børn på den skole.
-2. Tråde: brug emne, indhold, deltagere og "sender_info" (fx "Anne 2A").
+2. Tråde: brug emne, indhold, "regarding_children" (de af forælderens børn, tråden vedrører, hvis Aula angiver det) og afsenderens "sender_info" (fx "Anne 2A"). Deltagerlisten sendes ikke med, kun antallet ("participant_count").
 3. Børns navne i teksten kan hjælpe. Er du i tvivl, så læg det i weekly_mail som "usikker".
 
 ## Med i kalenderen
@@ -75,6 +75,7 @@ Teksten fra PDF og Word står allerede i "attachments[].text". Billeder skal du 
 1. Læs først beskedens eller opslagets tekst. Har den en bekræftet dato med tid og sted, behøver du ikke vedhæftningerne.
 2. Brug PDF/Word-teksten, hvis dato, tid eller sted mangler, og teksten antyder et arrangement eller henviser til en vedhæftning. Referater fra kontaktforældre læses altid.
 3. Læs billeder, hvis der stadig mangler dato, tid eller sted til et arrangement. Ellers spring billeder over (fx billeder af tøj, fotos fra fester).
+   Billeder med `"image_not_sent": true` er ikke sendt med (fotos sendes som standard ikke). Ser det ud til, at et arrangement står i sådan et billede, så skriv det i weekly_mail som "usikker", fx "Invitation i Aula-tråden '<emne>': se billedet for dato og tid."
 4. Kun opslag og beskeder med "new": true er nye. Ældre opslag og beskeder (`"new": false`) er allerede gennemgået ved en tidligere kørsel. Brug dem som sammenhæng og til "husk" og "fri" for ugen i week_plan (fx et opslag om en temadag med tidlig fri), men lav ikke nye "calendar"- eller "weekly_mail"-punkter ud fra dem alene. Lange tråde har kun de seneste ældre beskeder med ("older_messages_omitted" siger, hvor mange der er udeladt); aftaler fra de udeladte står allerede i existing_events.
 
 ## existing_events

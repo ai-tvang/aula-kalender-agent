@@ -973,16 +973,16 @@ async def aula_fetch(cfg: dict, since: datetime, week: tuple[date, date] | None 
                         new += 1
                 if not raw or new == 0:
                     break
-            participants = [p.get("name") for p in (t.get("participants") or []) if isinstance(p, dict)]
             out_threads.append(
                 {
                     "thread_id": t.get("id"),
                     "subject": t.get("subject"),
-                    "participants": participants[:60],
-                    # Kun navne; Aula sender også signerede links til børnenes profilbilleder.
-                    "regarding_children": [
-                        c.get("displayName") for c in (t.get("regardingChildren") or []) if isinstance(c, dict)
-                    ],
+                    # Deltagerlisten ("Forælder (Barn)" for hele klassen) sendes ikke til AI'en.
+                    # Kun antallet, og hvilke af ens egne børn tråden vedrører.
+                    "participant_count": len(t.get("participants") or []),
+                    "regarding_children": own_children(
+                        cfg, [c.get("displayName") for c in (t.get("regardingChildren") or []) if isinstance(c, dict)]
+                    ),
                     "messages": sorted(msgs.values(), key=lambda m: m.get("send_datetime") or ""),
                 }
             )
@@ -1025,6 +1025,16 @@ def _child_name(cfg: dict, aula_name: str | None) -> str | None:
         if c["name"].lower() in words:
             return c["name"]
     return None
+
+
+def own_children(cfg: dict, aula_names: list) -> list[str]:
+    """Egne børns fornavne (fra config) ud fra Aulas navne. Andre navne udelades."""
+    out: list[str] = []
+    for n in aula_names:
+        name = _child_name(cfg, n)
+        if name and name not in out:
+            out.append(name)
+    return out
 
 
 def _plan_date(value: str, monday: date) -> str:
@@ -1286,14 +1296,62 @@ def extract_text(path: Path, ext: str) -> str:
     return ""
 
 
-def handle_attachments(atts, att_dir: Path, client: httpx.Client) -> list[dict]:
+IMAGE_MODES = ("auto", "always", "never")
+IMAGE_AUTO_MAX = 3            # Flere billeder i ét opslag/én besked er typisk fotos fra en tur eller fest.
+IMAGE_AUTO_SHORT_TEXT = 300   # Under så mange tegn tekst kan indholdet stå i billedet (fx en invitation).
+IMAGE_AUTO_HINT = re.compile(r"invit|indbyd|vedhæft|vedlagt|program", re.I)
+IMAGE_AUTO_PHOTOS = re.compile(r"(billeder|fotos?|foto)\s+(fra|af)\b|galleri", re.I)
+
+
+def images_mode(cfg: dict | None) -> str:
+    mode = str((cfg or {}).get("send_images", "auto")).strip().lower()
+    return mode if mode in IMAGE_MODES else "auto"
+
+
+def allow_images(mode: str, text: str, n_images: int) -> bool:
+    """Afgør, om billederne i ét opslag eller én besked må sendes til AI'en.
+
+    "auto": kun når billederne sandsynligvis bærer oplysninger (fx en invitation som billede):
+    højst IMAGE_AUTO_MAX billeder, teksten handler ikke om fotos, og teksten er kort eller
+    henviser til en invitation, vedhæftning eller et program.
+    """
+    if mode == "always":
+        return True
+    if mode == "never" or n_images == 0 or n_images > IMAGE_AUTO_MAX:
+        return False
+    text = text or ""
+    if IMAGE_AUTO_PHOTOS.search(text):
+        return False
+    return len(text.strip()) < IMAGE_AUTO_SHORT_TEXT or bool(IMAGE_AUTO_HINT.search(text))
+
+
+def _att_name(a: dict) -> str:
+    return a.get("name") or (a.get("file") or {}).get("name") or "ukendt"
+
+
+def handle_attachments(atts, att_dir: Path, client: httpx.Client, text: str = "",
+                       mode: str = "auto") -> list[dict]:
+    atts = [a for a in atts or [] if isinstance(a, dict)]
+    # Dokumenter først, så deres tekst tæller med, når der tages stilling til billederne.
+    atts.sort(key=lambda a: Path(_att_name(a)).suffix.lower() in IMG_EXT)
+    n_images = sum(Path(_att_name(a)).suffix.lower() in IMG_EXT for a in atts)
+    images_ok = None
     result = []
-    for a in atts or []:
+    for a in atts:
         f = a.get("file") or {}
-        name = a.get("name") or f.get("name") or "ukendt"
+        name = _att_name(a)
         ext = Path(name).suffix.lower()
         item = {"name": name, "type": ext.lstrip(".") or "ukendt"}
         url = f.get("url")
+        if ext in IMG_EXT:
+            if images_ok is None:
+                doc_text = " ".join(r.get("text", "") for r in result)
+                images_ok = allow_images(mode, f"{text}\n{doc_text}", n_images)
+            if not images_ok:
+                # Billedet hentes ikke og sendes ikke. AI'en ved kun, at det findes.
+                item["image_not_sent"] = True
+                result.append(item)
+                continue
         if not url:
             result.append(item)
             continue
@@ -1318,7 +1376,9 @@ def handle_attachments(atts, att_dir: Path, client: httpx.Client) -> list[dict]:
 OLD_MESSAGES_CONTEXT = 30
 
 
-def prepare_input(posts: list[dict], threads: list[dict], since: datetime, run_dir: Path) -> dict:
+def prepare_input(posts: list[dict], threads: list[dict], since: datetime, run_dir: Path,
+                  cfg: dict | None = None) -> dict:
+    mode = images_mode(cfg)
     att_dir = run_dir / "attachments"
     att_dir.mkdir(parents=True, exist_ok=True)
     out_posts, out_threads = [], []
@@ -1327,6 +1387,7 @@ def prepare_input(posts: list[dict], threads: list[dict], since: datetime, run_d
             owner = p.get("owner") or {}
             ts = parse_dt(p.get("timestamp"))
             post_new = not ts or ts >= since
+            post_text = html_to_text(p.get("content_html"))
             out_posts.append(
                 {
                     "id": p.get("id"),
@@ -1336,8 +1397,9 @@ def prepare_input(posts: list[dict], threads: list[dict], since: datetime, run_d
                     "author": owner.get("full_name"),
                     "author_role": owner.get("role"),
                     "groups": [g.get("name") for g in p.get("shared_with_groups") or []],
-                    "text": html_to_text(p.get("content_html")),
-                    "attachments": handle_attachments(p.get("attachments"), att_dir, http)
+                    "text": post_text,
+                    "attachments": handle_attachments(p.get("attachments"), att_dir, http,
+                                                      f"{p.get('title') or ''}\n{post_text}", mode)
                     if post_new
                     else [{"name": a.get("name")} for a in p.get("attachments") or []],
                 }
@@ -1359,20 +1421,21 @@ def prepare_input(posts: list[dict], threads: list[dict], since: datetime, run_d
                 meta = None
                 for a in m.get("attachments") or []:
                     meta = meta or (a.get("creator") or {}).get("metadata")
+                msg_text = html_to_text(m.get("content_html"))
                 msgs.append(
                     {
                         "sender": m.get("sender_name"),
                         "sender_info": meta,
                         "date": m.get("send_datetime"),
                         "new": is_new,
-                        "text": html_to_text(m.get("content_html")),
+                        "text": msg_text,
                         # Vedhæftninger hentes kun for nye beskeder.
-                        "attachments": handle_attachments(m.get("attachments"), att_dir, http)
+                        "attachments": handle_attachments(m.get("attachments"), att_dir, http, msg_text, mode)
                         if is_new
                         else [{"name": a.get("name")} for a in m.get("attachments") or []],
                     }
                 )
-            entry = {k: t[k] for k in ("thread_id", "subject", "participants", "regarding_children")}
+            entry = {k: t[k] for k in ("thread_id", "subject", "participant_count", "regarding_children") if k in t}
             if omitted:
                 entry["older_messages_omitted"] = omitted
             out_threads.append({**entry, "messages": msgs})
@@ -2893,7 +2956,7 @@ def cmd_weekly(cfg: dict, state: dict, dry: bool, days: int | None) -> int:
     has_plan = week_plan_has_content(week_plan)
     if posts or threads or has_plan:
         try:
-            data = prepare_input(posts or [], threads or [], since, run_dir)
+            data = prepare_input(posts or [], threads or [], since, run_dir, cfg)
             today = now_local().date()
             managed = {rec["id"]: key for key, rec in state["events"].items()}
             existing = [
