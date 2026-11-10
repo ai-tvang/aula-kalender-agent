@@ -197,7 +197,8 @@ check("Billeder auto: mange billeder sendes ikke", not agent.allow_images("auto"
 check("Billeder auto: lang tekst uden henvisning sendes ikke", not agent.allow_images("auto", "x" * 400, 1))
 check("Billeder auto: lang tekst med invitation sendes", agent.allow_images("auto", "x" * 400 + " se invitationen", 1))
 check("Billeder never/always", not agent.allow_images("never", "", 1) and agent.allow_images("always", "billeder fra festen", 9))
-check("Billeder: ukendt værdi giver auto", agent.images_mode({"send_images": "måske"}) == "auto" and agent.images_mode(None) == "auto")
+check("Billeder: standard og ukendt værdi giver text", agent.images_mode({"send_images": "måske"}) == "text" and agent.images_mode(None) == "text"
+      and agent.images_mode({"send_images": "auto"}) == "auto")
 
 class FakeHttp:
     def __init__(s): s.urls = []
@@ -214,6 +215,27 @@ inv = [{"id": 9, "name": "invitation.png", "file": {"url": "https://x/9"}}]
 res2 = agent.handle_attachments(inv, att_dir, fh, "Se invitationen", "auto")
 check("Billeder: invitation hentes og sendes", fh.urls == ["https://x/9"] and res2[0].get("image_file") == "attachments/9_invitation.png")
 check("Billeder: payload_images springer frasorterede over", agent.payload_images({"a": res + res2}) == ["attachments/9_invitation.png"])
+
+# 2g. Tekst i billeder læses lokalt; kun teksten sendes
+fh2 = FakeHttp()
+real_ocr = agent.ocr_images
+agent.ocr_images = lambda paths: {p: ("Fødselsdag lørdag 5/12 kl. 11" if "invitation" in p.name else "") for p in paths}
+mixed = [{"id": 1, "name": "invitation.png", "file": {"url": "https://x/1"}}, {"id": 2, "name": "foto.jpg", "file": {"url": "https://x/2"}}]
+res3 = agent.handle_attachments(mixed, att_dir, fh2, "Hej alle", "text")
+by = {r["name"]: r for r in res3}
+check("OCR: tekst fra invitation sendes som image_text", by["invitation.png"].get("image_text") == "Fødselsdag lørdag 5/12 kl. 11")
+check("OCR: foto uden tekst sendes ikke", "image_text" not in by["foto.jpg"] and by["foto.jpg"].get("image_not_sent"))
+check("OCR: selve billederne sendes aldrig og slettes straks", not any("image_file" in r for r in res3)
+      and all(r.get("image_not_sent") for r in res3) and not list(att_dir.glob("1_invitation.png")) and not list(att_dir.glob("2_foto.jpg")))
+agent.ocr_images = lambda paths: None
+res4 = agent.handle_attachments(mixed, att_dir, FakeHttp(), "Hej alle", "text")
+check("OCR: uden OCR sendes hverken billede eller tekst", all(r.get("image_not_sent") and "image_text" not in r and "image_file" not in r for r in res4)
+      and not list(att_dir.glob("1_invitation.png")))
+many = [{"id": i, "name": f"f{i}.jpg", "file": {"url": f"https://x/{i}"}} for i in range(25)]
+fh3 = FakeHttp()
+agent.handle_attachments(many, att_dir, fh3, "", "text")
+check("OCR: højst 10 billeder hentes pr. opslag", len(fh3.urls) == agent.IMAGE_TEXT_MAX_FILES)
+check("OCR: uden Windows findes OCR ikke (None)", agent.sys.platform == "win32" or real_ocr([att_dir / "x.png"]) is None)
 
 # 3. weekly med husk, og med login-fejl i begge tilstande
 agent.sync_feeds = lambda *a: {"ny": 0}

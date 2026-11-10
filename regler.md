@@ -71,11 +71,11 @@ For hver skoledag i week_plan og hvert barn: hvornår skoledagen slutter.
 - Har forælderen selv skrevet et tidspunkt for sin egen rolle (fx "jeg henter kl. 13.30"), så nævn det i notes.
 
 ## Vedhæftninger
-Teksten fra PDF og Word står allerede i "attachments[].text". Billeder skal du selv se via "image_file" (se afsnittet "Data").
+Teksten fra PDF og Word står allerede i "attachments[].text". Tekst i billeder er som standard læst på forælderens computer og står i "attachments[].image_text"; den kan have småfejl (fx "l.b" for "1.b"), så læs den med omtanke. Er billeder sendt med som filer, ser du dem via "image_file" (se afsnittet "Data").
 1. Læs først beskedens eller opslagets tekst. Har den en bekræftet dato med tid og sted, behøver du ikke vedhæftningerne.
 2. Brug PDF/Word-teksten, hvis dato, tid eller sted mangler, og teksten antyder et arrangement eller henviser til en vedhæftning. Referater fra kontaktforældre læses altid.
-3. Læs billeder, hvis der stadig mangler dato, tid eller sted til et arrangement. Ellers spring billeder over (fx billeder af tøj, fotos fra fester).
-   Billeder med `"image_not_sent": true` er ikke sendt med (fotos sendes som standard ikke). Ser det ud til, at et arrangement står i sådan et billede, så skriv det i weekly_mail som "usikker", fx "Invitation i Aula-tråden '<emne>': se billedet for dato og tid."
+3. Brug "image_text", eller læs billedet ("image_file"), hvis der stadig mangler dato, tid eller sted til et arrangement. Ellers spring billeder over (fx billeder af tøj, fotos fra fester).
+   Billeder med `"image_not_sent": true` er ikke sendt med. Har de heller ingen "image_text", blev der ikke fundet tekst i billedet (fx et foto eller håndskrift). Ser det alligevel ud til, at et arrangement står i sådan et billede, så skriv det i weekly_mail som "usikker", fx "Invitation i Aula-tråden '<emne>': se billedet for dato og tid."
 4. Kun opslag og beskeder med "new": true er nye. Ældre opslag og beskeder (`"new": false`) er allerede gennemgået ved en tidligere kørsel. Brug dem som sammenhæng og til "husk" og "fri" for ugen i week_plan (fx et opslag om en temadag med tidlig fri), men lav ikke nye "calendar"- eller "weekly_mail"-punkter ud fra dem alene. Lange tråde har kun de seneste ældre beskeder med ("older_messages_omitted" siger, hvor mange der er udeladt); aftaler fra de udeladte står allerede i existing_events.
 
 ## existing_events

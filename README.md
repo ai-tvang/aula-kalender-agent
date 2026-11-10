@@ -25,7 +25,7 @@ Under huskelisten står de nye aftaler og ting, du bør kigge på selv: tilbud f
 
 Hver uge (som standard søndag kl. 7):
 
-1. Henter nye opslag og beskedtråde fra Aula siden sidste kørsel, inklusive tråden og vedhæftede Word- og PDF-filer. Vedhæftede billeder hentes kun, når de sandsynligvis indeholder en invitation eller et program (se `send_images`).
+1. Henter nye opslag og beskedtråde fra Aula siden sidste kørsel, inklusive tråden og vedhæftede Word- og PDF-filer. Tekst i vedhæftede billeder (fx en invitation) læses på din egen computer; selve billederne sendes ikke videre (se `send_images`).
 2. Lader AI'en (Claude eller ChatGPT) læse dem efter reglerne i `regler.md` og finde de bekræftede datoer.
 3. Henter dine kalender-links (fx Aula-kalenderen eller sportsklubben) og fletter dem ind.
 4. Opretter eller opdaterer aftaler i en separat Outlook-kalender, som standard "Skole og fritid". Den laver ikke dubletter, og flyttede datoer bliver rettet.
@@ -157,7 +157,7 @@ Du kan også rette filen selv. Felterne:
 | `openai_effort` | Hvor grundigt OpenAI-modellen tænker: `low`, `medium`, `high` (standard), `xhigh` eller `max`. |
 | `ugeplan` | `false` slår skema, ugeplaner og huskelisten fra. Standard `true`. |
 | `keep_runs_days` | Hvor mange dage kopier af Aula-indhold gemmes i `runs` (standard 7). |
-| `send_images` | Om vedhæftede billeder sendes til AI'en. `auto` (standard): kun når et opslag eller en besked har højst 3 billeder, teksten ikke handler om fotos ("billeder fra ...") og teksten er kort eller nævner en invitation, vedhæftning eller et program. `never`: aldrig. `always`: alle billeder i nye opslag og beskeder (som før 11. nov. 2026). Billeder, der ikke sendes, hentes heller ikke. |
+| `send_images` | Hvad der sker med vedhæftede billeder. `text` (standard): teksten i billedet læses på din computer med Windows' indbyggede tekstgenkendelse (OCR), og kun teksten sendes til AI'en. Billedet selv sendes aldrig og slettes straks. Fotos uden tekst giver ingenting. `auto`: selve billedet sendes, men kun når et opslag eller en besked har højst 3 billeder, teksten ikke handler om fotos, og teksten er kort eller nævner en invitation, vedhæftning eller et program. `always`: alle billeder i nye opslag og beskeder sendes. `never`: billeder hverken læses eller sendes. |
 
 ## Kalender-links
 
@@ -299,7 +299,7 @@ Agenten filtrerer ikke på dine børn, før indholdet sendes. Den sender alle op
 | Tråde: emne, og hvilke af dine egne børn tråden vedrører (fornavn fra `config.json`) | Billeder i Aulas galleri og profilbilleder |
 | Beskeder: afsenderens navn og Aulas beskrivelse af afsenderen (fx "Anne 2A"), dato og tekst. Nye beskeder og op til 30 ældre pr. tråd | Kontaktlister, Aula-dokumenter (Sikker fildeling) |
 | Teksten fra vedhæftede PDF- og Word-filer i nye opslag og beskeder (op til 20.000 tegn pr. fil). Referater kan indeholde navne | Vedhæftninger i ældre beskeder (kun filnavnet) |
-| Vedhæftede billeder i nye opslag og beskeder, efter `send_images` (standard `auto`, se [config.json](#configjson)). Billeder kan vise børn | Billeder, som `send_images` sorterer fra (AI'en får kun at vide, at der er et billede) |
+| Teksten i vedhæftede billeder i nye opslag og beskeder, læst på din egen computer (op til 3.000 tegn pr. billede, højst 10 billeder pr. opslag eller besked). Navne i teksten sendes med | Selve billederne, så længe `send_images` er `text` (standard) eller `never`. Fotos uden tekst giver ingenting; AI'en får kun at vide, at der var et billede |
 | Skema, ugeplan og Huskelisten for den kommende skoleuge | |
 | Aftaler, der allerede står i din kalender "Skole og fritid", så der ikke kommer dubletter | Dine andre Outlook-kalendere og din mail |
 
@@ -315,7 +315,7 @@ Agenten filtrerer ikke på dine børn, før indholdet sendes. Den sender alle op
 
 ### Sendes data til USA, og er det lovligt?
 
-Ja, Aula-indholdet sendes til Claude (Anthropic) eller ChatGPT (OpenAI), og begge behandler data i USA. Det gælder også beskeder fra lærere og andre forældre, navne på andre børn i beskeder og referater og de vedhæftede billeder, der sendes (se `send_images`). Dine logins og din kalender bliver på din egen computer, og intet sendes til mig.
+Ja, Aula-indholdet sendes til Claude (Anthropic) eller ChatGPT (OpenAI), og begge behandler data i USA. Det gælder også beskeder fra lærere og andre forældre, navne på andre børn i beskeder og referater og teksten i vedhæftede billeder. Selve billederne sendes ikke, medmindre du selv ændrer `send_images`. Dine logins og din kalender bliver på din egen computer, og intet sendes til mig.
 
 **Slå træning fra.** Se ovenfor, hvor indstillingen findes i Claude og ChatGPT. Med træning slået fra slettes data efter højst 30 dage. Med en API-nøgle bruges data aldrig til træning. Med træning slået til kan andre familiers beskeder indgå i træningsdata i op til 5 år, og det synes jeg ikke, man skal gøre.
 
@@ -337,6 +337,7 @@ Ja, Aula-indholdet sendes til Claude (Anthropic) eller ChatGPT (OpenAI), og begg
 - Outlook-adgangen bruger Microsofts offentlige app til Graph PowerShell, fordi personlige konti ikke kan oprette egne app-registreringer uden Azure. Microsoft kan ændre det. Har du din egen app-registrering, kan du sætte `graph_client_id` i config.
 - AI'en kan tolke det samme lidt forskelligt fra kørsel til kørsel. Ugemailen og `runs`-mappen viser, hvad der skete.
 - Ugeplaner afhænger af, hvilket system skolen bruger, og af at læreren skriver det i ugeplanen. Kør `agent.py ugeplan` for at se, hvad agenten finder hos jer.
+- Tekst i billeder læses med Windows' tekstgenkendelse. Trykt tekst læses godt; håndskrift, pyntede skrifttyper og uskarpe fotos kan give fejl eller ingenting, og så står der i ugemailen, at du selv skal se billedet i Aula. Mangler Windows dansk sprogpakke, kan æ, ø og å blive læst forkert.
 - Kun testet på Windows med Outlook. Google Kalender understøttes ikke endnu.
 
 ## Feedback
