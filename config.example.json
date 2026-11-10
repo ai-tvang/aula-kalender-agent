@@ -55,6 +55,7 @@
   "first_run_days": 30,
   "feed_days_ahead": 365,
   "keep_runs_days": 7,
+  "send_images": "text",
   "reminder_minutes_timed": 60,
   "reminder_minutes_allday": 360,
   "graph_client_id": "",

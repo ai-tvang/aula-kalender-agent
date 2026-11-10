@@ -185,6 +185,65 @@ pt = agent.prepare_input([], [long_thread], since_t, work / "runs" / "pt")["thre
 check("Lange tråde: alle nye + 30 ældre", len(pt["messages"]) == 31 and pt["older_messages_omitted"] == 70
       and pt["messages"][-1]["text"] == "ny" and pt["messages"][0]["text"] == "gammel 70")
 
+# 2f. Deltagerlister og billeder sendes ikke til AI'en
+th = {"thread_id": 7, "subject": "Fødselsdag", "participant_count": 42, "regarding_children": ["Emma"],
+      "participants": ["Anne Hansen (Sofie)"], "messages": [{"send_datetime": "2030-11-09T08:00:00+00:00", "content_html": "Hej"}]}
+pth = agent.prepare_input([], [th], since_t, work / "runs" / "pth", cfg)["threads"][0]
+check("Deltagere: kun antal, ingen navneliste", pth.get("participant_count") == 42 and "participants" not in pth)
+check("Deltagere: egne børn fra config", agent.own_children(cfg, ["Emma Testesen", "Sofie Hansen", "Emma T"]) == ["Emma"])
+check("Billeder auto: kort invitation sendes", agent.allow_images("auto", "Emma inviterer til fødselsdag", 1))
+check("Billeder auto: fotos fra tur sendes ikke", not agent.allow_images("auto", "Her er billeder fra turen", 2))
+check("Billeder auto: mange billeder sendes ikke", not agent.allow_images("auto", "", 4))
+check("Billeder auto: lang tekst uden henvisning sendes ikke", not agent.allow_images("auto", "x" * 400, 1))
+check("Billeder auto: lang tekst med invitation sendes", agent.allow_images("auto", "x" * 400 + " se invitationen", 1))
+check("Billeder never/always", not agent.allow_images("never", "", 1) and agent.allow_images("always", "billeder fra festen", 9))
+check("Billeder: standard og ukendt værdi giver text", agent.images_mode({"send_images": "måske"}) == "text" and agent.images_mode(None) == "text"
+      and agent.images_mode({"send_images": "auto"}) == "auto")
+
+class FakeHttp:
+    def __init__(s): s.urls = []
+    def get(s, url):
+        s.urls.append(url)
+        return N(content=b"x", raise_for_status=lambda: None)
+fh = FakeHttp()
+att_dir = work / "runs" / "att"; att_dir.mkdir(parents=True, exist_ok=True)
+photos = [{"id": i, "name": f"foto{i}.jpg", "file": {"url": f"https://x/{i}"}} for i in range(5)]
+res = agent.handle_attachments(photos, att_dir, fh, "Billeder fra juleklip", "auto")
+check("Billeder: frasorterede hentes ikke", fh.urls == [] and all(r.get("image_not_sent") for r in res)
+      and not any("image_file" in r for r in res))
+inv = [{"id": 9, "name": "invitation.png", "file": {"url": "https://x/9"}}]
+res2 = agent.handle_attachments(inv, att_dir, fh, "Se invitationen", "auto")
+check("Billeder: invitation hentes og sendes", fh.urls == ["https://x/9"] and res2[0].get("image_file") == "attachments/9_invitation.png")
+check("Billeder: payload_images springer frasorterede over", agent.payload_images({"a": res + res2}) == ["attachments/9_invitation.png"])
+
+# 2g. Tekst i billeder læses lokalt; kun teksten sendes
+fh2 = FakeHttp()
+real_ocr = agent.ocr_images
+agent.ocr_images = lambda paths: {p: ("Fødselsdag lørdag 5/12 kl. 11" if "invitation" in p.name else "") for p in paths}
+mixed = [{"id": 1, "name": "invitation.png", "file": {"url": "https://x/1"}}, {"id": 2, "name": "foto.jpg", "file": {"url": "https://x/2"}}]
+res3 = agent.handle_attachments(mixed, att_dir, fh2, "Hej alle", "text")
+by = {r["name"]: r for r in res3}
+check("OCR: tekst fra invitation sendes som image_text", by["invitation.png"].get("image_text") == "Fødselsdag lørdag 5/12 kl. 11")
+check("OCR: foto uden tekst sendes ikke", "image_text" not in by["foto.jpg"] and by["foto.jpg"].get("image_not_sent"))
+check("OCR: selve billederne sendes aldrig og slettes straks", not any("image_file" in r for r in res3)
+      and all(r.get("image_not_sent") for r in res3) and not list(att_dir.glob("1_invitation.png")) and not list(att_dir.glob("2_foto.jpg")))
+agent.ocr_images = lambda paths: None
+res4 = agent.handle_attachments(mixed, att_dir, FakeHttp(), "Hej alle", "text")
+check("OCR: uden OCR sendes hverken billede eller tekst", all(r.get("image_not_sent") and "image_text" not in r and "image_file" not in r for r in res4)
+      and not list(att_dir.glob("1_invitation.png")))
+many = [{"id": i, "name": f"f{i}.jpg", "file": {"url": f"https://x/{i}"}} for i in range(25)]
+fh3 = FakeHttp()
+agent.handle_attachments(many, att_dir, fh3, "", "text")
+check("OCR: uden OCR får AI'en en note, og forælderen en besked", all("kunne ikke læses" in r.get("note", "") for r in res4)
+      and "blev ikke læst" in (agent.ocr_problem() or "") and str(len(res4)) in agent.ocr_problem())
+agent._ocr_state.clear()
+check("OCR: ingen besked, når alt virker", agent.ocr_problem() is None)
+agent._ocr_state["warned"] = True
+check("OCR: besked når dansk mangler", "dansk tekstgenkendelse" in agent.ocr_problem())
+agent._ocr_state.clear()
+check("OCR: højst 10 billeder hentes pr. opslag", len(fh3.urls) == agent.IMAGE_TEXT_MAX_FILES)
+check("OCR: uden Windows findes OCR ikke (None)", agent.sys.platform == "win32" or real_ocr([att_dir / "x.png"]) is None)
+
 # 3. weekly med husk, og med login-fejl i begge tilstande
 agent.sync_feeds = lambda *a: {"ny": 0}
 agent.sync_manual = lambda *a: None

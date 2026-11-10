@@ -973,16 +973,16 @@ async def aula_fetch(cfg: dict, since: datetime, week: tuple[date, date] | None 
                         new += 1
                 if not raw or new == 0:
                     break
-            participants = [p.get("name") for p in (t.get("participants") or []) if isinstance(p, dict)]
             out_threads.append(
                 {
                     "thread_id": t.get("id"),
                     "subject": t.get("subject"),
-                    "participants": participants[:60],
-                    # Kun navne; Aula sender også signerede links til børnenes profilbilleder.
-                    "regarding_children": [
-                        c.get("displayName") for c in (t.get("regardingChildren") or []) if isinstance(c, dict)
-                    ],
+                    # Deltagerlisten ("Forælder (Barn)" for hele klassen) sendes ikke til AI'en.
+                    # Kun antallet, og hvilke af ens egne børn tråden vedrører.
+                    "participant_count": len(t.get("participants") or []),
+                    "regarding_children": own_children(
+                        cfg, [c.get("displayName") for c in (t.get("regardingChildren") or []) if isinstance(c, dict)]
+                    ),
                     "messages": sorted(msgs.values(), key=lambda m: m.get("send_datetime") or ""),
                 }
             )
@@ -1025,6 +1025,16 @@ def _child_name(cfg: dict, aula_name: str | None) -> str | None:
         if c["name"].lower() in words:
             return c["name"]
     return None
+
+
+def own_children(cfg: dict, aula_names: list) -> list[str]:
+    """Egne børns fornavne (fra config) ud fra Aulas navne. Andre navne udelades."""
+    out: list[str] = []
+    for n in aula_names:
+        name = _child_name(cfg, n)
+        if name and name not in out:
+            out.append(name)
+    return out
 
 
 def _plan_date(value: str, monday: date) -> str:
@@ -1286,14 +1296,178 @@ def extract_text(path: Path, ext: str) -> str:
     return ""
 
 
-def handle_attachments(atts, att_dir: Path, client: httpx.Client) -> list[dict]:
+IMAGE_MODES = ("text", "auto", "always", "never")
+IMAGE_TEXT_MIN = 15       # Færre tegn end det er sjældent en invitation (fx et skilt i baggrunden af et foto).
+IMAGE_TEXT_MAX = 3000
+IMAGE_TEXT_MAX_FILES = 10  # Flere billeder i ét opslag/én besked er et fotoalbum; resten læses ikke.
+IMAGE_AUTO_MAX = 3            # Flere billeder i ét opslag/én besked er typisk fotos fra en tur eller fest.
+IMAGE_AUTO_SHORT_TEXT = 300   # Under så mange tegn tekst kan indholdet stå i billedet (fx en invitation).
+IMAGE_AUTO_HINT = re.compile(r"invit|indbyd|vedhæft|vedlagt|program", re.I)
+IMAGE_AUTO_PHOTOS = re.compile(r"(billeder|fotos?|foto)\s+(fra|af)\b|galleri", re.I)
+
+
+def images_mode(cfg: dict | None) -> str:
+    mode = str((cfg or {}).get("send_images", "text")).strip().lower()
+    return mode if mode in IMAGE_MODES else "text"
+
+
+def allow_images(mode: str, text: str, n_images: int) -> bool:
+    """Afgør, om billederne i ét opslag eller én besked må sendes til AI'en.
+
+    "auto": kun når billederne sandsynligvis bærer oplysninger (fx en invitation som billede):
+    højst IMAGE_AUTO_MAX billeder, teksten handler ikke om fotos, og teksten er kort eller
+    henviser til en invitation, vedhæftning eller et program.
+    """
+    if mode == "always":
+        return True
+    if mode in ("never", "text") or n_images == 0 or n_images > IMAGE_AUTO_MAX:
+        return False
+    text = text or ""
+    if IMAGE_AUTO_PHOTOS.search(text):
+        return False
+    return len(text.strip()) < IMAGE_AUTO_SHORT_TEXT or bool(IMAGE_AUTO_HINT.search(text))
+
+
+OCR_PS = r"""
+$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$null = [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType = WindowsRuntime]
+$null = [Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics, ContentType = WindowsRuntime]
+$null = [Windows.Storage.StorageFile, Windows.Storage, ContentType = WindowsRuntime]
+$null = [Windows.Storage.Streams.RandomAccessStream, Windows.Storage.Streams, ContentType = WindowsRuntime]
+$null = [Windows.Globalization.Language, Windows.Globalization, ContentType = WindowsRuntime]
+$asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+    $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
+function Await($op, $type) { $t = $asTask.MakeGenericMethod($type).Invoke($null, @($op)); $t.Wait(-1) | Out-Null; $t.Result }
+$lang = New-Object Windows.Globalization.Language 'da-DK'
+$danish = [Windows.Media.Ocr.OcrEngine]::IsLanguageSupported($lang)
+$engine = $null
+if ($danish) { $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage($lang) }
+if ($null -eq $engine) { $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages() }
+$out = @{ danish = $danish; engine = ($null -ne $engine); texts = @{}; errors = @{} }
+if ($null -ne $engine) {
+    $out.language = $engine.RecognizerLanguage.LanguageTag
+    foreach ($item in ($env:AULA_OCR_PATHS -split '\|')) {
+        $p = [string]$item
+        try {
+            $file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($p)) ([Windows.Storage.StorageFile])
+            $stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
+            $decoder = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
+            $bmp = Await ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+            $res = Await ($engine.RecognizeAsync($bmp)) ([Windows.Media.Ocr.OcrResult])
+            $out.texts[$p] = [string](@($res.Lines | ForEach-Object { $_.Text }) -join "`n")
+            $stream.Dispose()
+        } catch { $out.errors[$p] = [string]$_.Exception.Message }
+    }
+}
+$out | ConvertTo-Json -Compress -Depth 4
+"""
+OCR_MAX_SIDE = 2600
+_ocr_state: dict = {}
+
+
+def ocr_images(paths: list[Path]) -> dict[Path, str] | None:
+    """Læser teksten i billeder lokalt med Windows' indbyggede tekstgenkendelse (OCR).
+
+    Kaldes gennem Windows PowerShell, så der ikke skal installeres noget. Billederne forlader
+    ikke computeren. Returnerer None, hvis OCR ikke findes (fx ikke Windows).
+    """
+    if sys.platform != "win32" or _ocr_state.get("unavailable"):
+        return None
+    if not paths:
+        return {}
+    sent: dict[str, Path] = {}
+    temp: list[Path] = []
+    for p in paths:
+        src = p
+        try:  # Ret orientering og størrelse, og gem som PNG, som Windows altid kan læse.
+            from PIL import Image, ImageOps
+
+            with Image.open(p) as im:
+                im = ImageOps.exif_transpose(im).convert("RGB")
+                im.thumbnail((OCR_MAX_SIDE, OCR_MAX_SIDE))
+                src = p.with_name(p.name + ".ocr.png")
+                im.save(src)
+            temp.append(src)
+        except Exception:  # noqa: BLE001
+            src = p
+        sent[str(src.resolve())] = p
+    try:
+        proc = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand",
+             base64.b64encode(OCR_PS.encode("utf-16-le")).decode("ascii")],
+            capture_output=True, timeout=60 + 20 * len(sent),
+            env={**os.environ, "AULA_OCR_PATHS": "|".join(sent)},
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        text = proc.stdout.decode("utf-8", "replace")
+        if "{" not in text:
+            raise RuntimeError(re.sub(r"\s+", " ", proc.stderr.decode("utf-8", "replace"))[-600:] or "intet svar")
+        data = json.loads(text[text.index("{"): text.rindex("}") + 1])
+    except Exception as e:  # noqa: BLE001
+        log.warning("Tekstgenkendelse (OCR) af billeder virkede ikke: %s", _short(e))
+        _ocr_state["unavailable"] = True
+        return None
+    finally:
+        for t in temp:
+            t.unlink(missing_ok=True)
+    if not data.get("engine"):
+        log.warning("Windows har ingen tekstgenkendelse (OCR) installeret, så billeder læses ikke.")
+        _ocr_state["unavailable"] = True
+        return None
+    if not data.get("danish") and not _ocr_state.get("warned"):
+        _ocr_state["warned"] = True
+        log.warning("Windows mangler dansk tekstgenkendelse (OCR); bruger %s. Æ, ø og å kan blive læst forkert.",
+                    data.get("language"))
+    for k, v in (data.get("errors") or {}).items():
+        log.warning("Billedet %s kunne ikke læses: %s", sent.get(k, Path(k)).name, v)
+    return {orig: (data.get("texts") or {}).get(k, "") or "" for k, orig in sent.items()}
+
+
+def _att_name(a: dict) -> str:
+    return a.get("name") or (a.get("file") or {}).get("name") or "ukendt"
+
+
+def handle_attachments(atts, att_dir: Path, client: httpx.Client, text: str = "",
+                       mode: str = "text") -> list[dict]:
+    """Henter vedhæftninger. Billeder: "text" læser teksten lokalt (OCR) og sender kun den;
+    "auto"/"always" sender selve billedet efter allow_images; "never" sender intet."""
+    atts = [a for a in atts or [] if isinstance(a, dict)]
+    # Dokumenter først, så deres tekst tæller med, når der tages stilling til billederne.
+    atts.sort(key=lambda a: Path(_att_name(a)).suffix.lower() in IMG_EXT)
+    n_images = sum(Path(_att_name(a)).suffix.lower() in IMG_EXT for a in atts)
+    images_ok = None
+    to_read: list[tuple[dict, Path]] = []
     result = []
-    for a in atts or []:
+    for a in atts:
         f = a.get("file") or {}
-        name = a.get("name") or f.get("name") or "ukendt"
+        name = _att_name(a)
         ext = Path(name).suffix.lower()
         item = {"name": name, "type": ext.lstrip(".") or "ukendt"}
         url = f.get("url")
+        if ext in IMG_EXT and mode == "text":
+            if url and len(to_read) < IMAGE_TEXT_MAX_FILES:
+                path = att_dir / (str(a.get("id")) + "_" + re.sub(r'[<>:"/\\|?*]', "_", name)[:100])
+                try:
+                    r = client.get(url)
+                    r.raise_for_status()
+                    path.write_bytes(r.content)
+                    to_read.append((item, path))
+                except Exception as e:  # noqa: BLE001
+                    item["note"] = f"download fejlede: {e}"
+            item["image_not_sent"] = True
+            result.append(item)
+            continue
+        if ext in IMG_EXT:
+            if images_ok is None:
+                doc_text = " ".join(r.get("text", "") for r in result)
+                images_ok = allow_images(mode, f"{text}\n{doc_text}", n_images)
+            if not images_ok:
+                # Billedet hentes ikke og sendes ikke. AI'en ved kun, at det findes.
+                item["image_not_sent"] = True
+                result.append(item)
+                continue
         if not url:
             result.append(item)
             continue
@@ -1312,13 +1486,49 @@ def handle_attachments(atts, att_dir: Path, client: httpx.Client) -> list[dict]:
         elif ext in IMG_EXT:
             item["image_file"] = f"attachments/{path.name}"
         result.append(item)
+    if to_read:
+        try:
+            texts = ocr_images([p for _, p in to_read])
+        finally:
+            for _, p in to_read:  # Billedet har gjort sit; kun teksten går videre.
+                p.unlink(missing_ok=True)
+        if texts is None:
+            # Tekstgenkendelsen virker ikke her. Sig det til AI'en og (via ocr_problem) til forælderen.
+            _ocr_state["unread"] = _ocr_state.get("unread", 0) + len(to_read)
+            for item, _ in to_read:
+                item["note"] = "billedet kunne ikke læses på computeren (tekstgenkendelse virker ikke)"
+            return result
+        for item, p in to_read:
+            found = (texts.get(p) or "").strip()
+            if len(found) >= IMAGE_TEXT_MIN:
+                item["image_text"] = found[:IMAGE_TEXT_MAX]
     return result
+
+
+def ocr_problem() -> str | None:
+    """Besked til ugemailen, hvis billeder ikke kunne læses, eller dansk tekstgenkendelse mangler."""
+    if _ocr_state.get("unread"):
+        n = _ocr_state["unread"]
+        return (
+            f"{n} billede{'r' if n != 1 else ''} i Aula blev ikke læst, fordi Windows' tekstgenkendelse ikke "
+            "virker på denne computer (se logs\\agent.log). Invitationer, der kun findes som billede, kan derfor "
+            'mangle, så tjek selv Aula. Vil du hellere sende billederne til AI\'en, så sæt "send_images": "auto" '
+            "i config.json."
+        )
+    if _ocr_state.get("warned"):
+        return (
+            "Windows mangler dansk tekstgenkendelse, så æ, ø og å i billeder kan blive læst forkert. Tilføj dansk "
+            "under Indstillinger > Tid og sprog > Sprog og område."
+        )
+    return None
 
 
 OLD_MESSAGES_CONTEXT = 30
 
 
-def prepare_input(posts: list[dict], threads: list[dict], since: datetime, run_dir: Path) -> dict:
+def prepare_input(posts: list[dict], threads: list[dict], since: datetime, run_dir: Path,
+                  cfg: dict | None = None) -> dict:
+    mode = images_mode(cfg)
     att_dir = run_dir / "attachments"
     att_dir.mkdir(parents=True, exist_ok=True)
     out_posts, out_threads = [], []
@@ -1327,6 +1537,7 @@ def prepare_input(posts: list[dict], threads: list[dict], since: datetime, run_d
             owner = p.get("owner") or {}
             ts = parse_dt(p.get("timestamp"))
             post_new = not ts or ts >= since
+            post_text = html_to_text(p.get("content_html"))
             out_posts.append(
                 {
                     "id": p.get("id"),
@@ -1336,8 +1547,9 @@ def prepare_input(posts: list[dict], threads: list[dict], since: datetime, run_d
                     "author": owner.get("full_name"),
                     "author_role": owner.get("role"),
                     "groups": [g.get("name") for g in p.get("shared_with_groups") or []],
-                    "text": html_to_text(p.get("content_html")),
-                    "attachments": handle_attachments(p.get("attachments"), att_dir, http)
+                    "text": post_text,
+                    "attachments": handle_attachments(p.get("attachments"), att_dir, http,
+                                                      f"{p.get('title') or ''}\n{post_text}", mode)
                     if post_new
                     else [{"name": a.get("name")} for a in p.get("attachments") or []],
                 }
@@ -1359,20 +1571,21 @@ def prepare_input(posts: list[dict], threads: list[dict], since: datetime, run_d
                 meta = None
                 for a in m.get("attachments") or []:
                     meta = meta or (a.get("creator") or {}).get("metadata")
+                msg_text = html_to_text(m.get("content_html"))
                 msgs.append(
                     {
                         "sender": m.get("sender_name"),
                         "sender_info": meta,
                         "date": m.get("send_datetime"),
                         "new": is_new,
-                        "text": html_to_text(m.get("content_html")),
+                        "text": msg_text,
                         # Vedhæftninger hentes kun for nye beskeder.
-                        "attachments": handle_attachments(m.get("attachments"), att_dir, http)
+                        "attachments": handle_attachments(m.get("attachments"), att_dir, http, msg_text, mode)
                         if is_new
                         else [{"name": a.get("name")} for a in m.get("attachments") or []],
                     }
                 )
-            entry = {k: t[k] for k in ("thread_id", "subject", "participants", "regarding_children")}
+            entry = {k: t[k] for k in ("thread_id", "subject", "participant_count", "regarding_children") if k in t}
             if omitted:
                 entry["older_messages_omitted"] = omitted
             out_threads.append({**entry, "messages": msgs})
@@ -2165,6 +2378,7 @@ def payload_images(payload: dict) -> list[str]:
     return found
 
 
+IMAGE_TEXT_HINT = 'Tekst i billeder er læst på computeren og står i "image_text". Selve billederne er ikke sendt med.'
 IMAGE_HINTS = {
     "api": "Billeder kan ses med værktøjet laes_billede (feltet image_file). Brug det kun efter reglerne for vedhæftninger.",
     "openai-api": "Billeder kan ses med værktøjet laes_billede (feltet image_file). Brug det kun efter reglerne for vedhæftninger.",
@@ -2180,7 +2394,7 @@ def run_ai(cfg: dict, payload: dict, run_dir: Path) -> dict:
     prompt = (
         f"{rules}\n{family_section(cfg)}\n{OUTPUT_SPEC}\n"
         "## Data\n"
-        f"{IMAGE_HINTS[mode]}\n\n"
+        f"{IMAGE_TEXT_HINT if images_mode(cfg) == 'text' else IMAGE_HINTS[mode]}\n\n"
         f"```json\n{json.dumps(payload, ensure_ascii=False, indent=1)}\n```\n"
     )
     (run_dir / "prompt.md").write_text(prompt, encoding="utf-8")
@@ -2893,7 +3107,7 @@ def cmd_weekly(cfg: dict, state: dict, dry: bool, days: int | None) -> int:
     has_plan = week_plan_has_content(week_plan)
     if posts or threads or has_plan:
         try:
-            data = prepare_input(posts or [], threads or [], since, run_dir)
+            data = prepare_input(posts or [], threads or [], since, run_dir, cfg)
             today = now_local().date()
             managed = {rec["id"]: key for key, rec in state["events"].items()}
             existing = [
@@ -2943,7 +3157,9 @@ def cmd_weekly(cfg: dict, state: dict, dry: bool, days: int | None) -> int:
                 except Exception as e:  # noqa: BLE001
                     log.error("Kunne ikke oprette %s: %s", item, e)
                     errors.append(f"Kunne ikke lægge '{item.get('title', '?')}' ({item.get('date', '?')}) i kalenderen: {_short(e)}")
-            mail_items = result.get("weekly_mail", [])
+            mail_items = [m for m in result.get("weekly_mail", []) or [] if isinstance(m, dict)]
+            if ocr_problem():
+                mail_items.append({"category": "billeder", "children": [], "text": ocr_problem()})
             husk = [h for h in result.get("husk", []) or [] if isinstance(h, dict) and h.get("text")]
             fri = [f for f in result.get("fri", []) or [] if isinstance(f, dict) and f.get("date")]
     elif posts is not None:
