@@ -68,7 +68,7 @@ Hver uge (som standard søndag kl. 7):
 
 Agenten ligger bagefter i `C:\Users\<dig>\Aula-kalenderagent`, og du finder genvejene ved at søge på **Aula-agent** i Start-menuen: **Aula-agent kør nu**, **Aula-agent log ind på Aula igen**, **Aula-agent log ind på Outlook igen**, **Aula-agent opsætning** og **Aula-agent åbn mappen**. Du skal ikke bruge PowerShell igen.
 
-**Opdatering:** kør samme linje igen. Den finder selv din installation, også hvis du har installeret fra ZIP et andet sted, og dine indstillinger og login bevares.
+**Opdatering:** kør samme linje igen. Den finder selv din installation, også hvis du har installeret fra ZIP et andet sted. Dine indstillinger, login og den planlagte kørsel bevares, og genvejene i Start-menuen opdateres.
 
 **Skift AI:** kør **Aula-agent opsætning** fra Start-menuen, og vælg `claude`, `chatgpt` eller `api` (API-nøgle). Mangler programmet, tilbyder opsætningen at installere det.
 
@@ -111,7 +111,7 @@ Du kan indsætte linket til denne side i Claude eller ChatGPT og skrive fx "Hjæ
 | "STOP: Din brugermappe ligger i OneDrive" | Brug den manuelle vej, og læg mappen uden for OneDrive, fx `C:\Aula-kalenderagent`. |
 | "Python 3.14 kunne ikke installeres" | Installer Python 3.14 fra [python.org](https://www.python.org/downloads/windows/), og kør linjen igen. |
 | `claude` findes ikke, eller Claude Code beder om login under kørslen | Åbn et nyt PowerShell-vindue, kør `claude`, log ind og skriv `/exit`. Kør derefter **Aula-agent opsætning** fra Start-menuen (eller linjen igen). |
-| Du har ikke et Claude-abonnement | Vælg ChatGPT, hvis du har et ChatGPT-abonnement, ellers en API-nøgle (se [Det skal du have](#det-skal-du-have)). |
+| Du har ikke et Claude-abonnement | Vælg ChatGPT, hvis du har ChatGPT Plus eller Pro, ellers en API-nøgle (se [Det skal du have](#det-skal-du-have)). |
 | Ugemailen siger, at ChatGPT ikke kunne logge ind | Kør **Aula-agent opsætning** fra Start-menuen, og sig ja til at logge ind i Codex. Kør derefter **Aula-agent kør nu**. (Avanceret: `codex login` i PowerShell.) |
 | "Codex kunne ikke starte sin sikre sandkasse" | Kør **Aula-agent opsætning** fra Start-menuen, og sig ja til at sætte sandkassen op. På ældre Windows beder Windows om administrator-godkendelse. Agenten kører ikke Codex uden sandkassen. (Avanceret: `codex sandbox setup --elevated --current-user`.) |
 | "Codex CLI er for gammel" | Kør **Aula-agent opsætning** fra Start-menuen, og sig ja til at opdatere Codex. (Avanceret: `npm install -g @openai/codex@latest`.) |
@@ -211,7 +211,7 @@ Med Claude API-nøgle betaler du for det, Claude læser. Det afhænger af, hvor 
 
 | Kørsel | Indhold | Anslået pris |
 |---|---|---|
-| Første kørsel, 30 dage tilbage | flere hundrede opslag og beskeder, Word/PDF-filer, billeder | ca. 0,70-1,00 dollar (5-7 kr.) |
+| Første kørsel, 30 dage tilbage | flere hundrede opslag og beskeder, Word/PDF-filer, tekst fra billeder | ca. 0,70-1,00 dollar (5-7 kr.) |
 | Almindelig uge | nye opslag og beskeder, ugeplan og skema | ca. 0,20-0,30 dollar (1,50-2 kr.) |
 | Stille uge | kun ugeplan og skema | ca. 0,10-0,20 dollar |
 
@@ -230,7 +230,7 @@ Tallene er anslåede, beregnet ud fra listepriser, og ikke målt på rigtige kø
 
 Lange beskedtråde (fx kontaktforældrenes) sendes ikke i deres fulde længde hver uge: AI'en får alle nye beskeder og de 30 seneste ældre som sammenhæng.
 
-Billeder bliver skaleret ned, før de sendes. Med API-nøgle ser AI'en kun dem, reglerne i `regler.md` siger, den skal se. Med Codex sendes billederne fra ugens opslag med fra start (højst 12).
+Billeder sendes som standard ikke; kun teksten i dem, og den fylder meget lidt. Har du sat `send_images` til `auto` eller `always`, bliver billederne skaleret ned, før de sendes. Med API-nøgle og Claude Code ser AI'en så kun dem, reglerne i `regler.md` siger, den skal se. Med Codex sendes de med fra start (højst 12).
 
 ### Kvalitet med ChatGPT
 
@@ -297,7 +297,7 @@ Agenten filtrerer ikke på dine børn, før indholdet sendes. Den sender alle op
 | Sendes | Sendes ikke |
 |---|---|
 | `regler.md` og et afsnit om familien fra `config.json`: dit navn som i Aula, børnenes fornavne, klasse, skole, Aula-grupper, klubber og dine noter | MitID-brugernavn og -adgangskode, Aula- og Outlook-login, API-nøgler |
-| Opslag: titel, dato, tekst, forfatterens navn og rolle, grupper | Deltagerlisten i tråde (navne på alle forældre og børn i tråden). Kun antallet sendes |
+| Opslag: titel, dato, tekst, forfatterens navn og rolle, grupper | Deltagerlisten i tråde (navne på alle forældre og børn i tråden). Højst antallet sendes. I vores test leverede Aula slet ikke listen |
 | Tråde: emne, og hvilke af dine egne børn tråden vedrører (fornavn fra `config.json`) | Billeder i Aulas galleri og profilbilleder |
 | Beskeder: afsenderens navn og Aulas beskrivelse af afsenderen (fx "Anne 2A"), dato og tekst. Nye beskeder og op til 30 ældre pr. tråd | Kontaktlister, Aula-dokumenter (Sikker fildeling) |
 | Teksten fra vedhæftede PDF- og Word-filer i nye opslag og beskeder (op til 20.000 tegn pr. fil). Referater kan indeholde navne | Vedhæftninger i ældre beskeder (kun filnavnet) |
@@ -313,7 +313,7 @@ Agenten filtrerer ikke på dine børn, før indholdet sendes. Den sender alle op
 - AI'ens svar kan kun blive til aftaler i din egen kalender og en mail til dig selv. Står der instruktioner til AI'en i en besked fra en anden, kan de ikke få adgang til dine login eller sende noget til andre:
   - Med Claude Code må Claude kun læse filer i kørslens egen mappe.
   - Med Codex sender Codex-programmet Aula-indholdet til OpenAI og får svaret tilbage; det er den eneste netværkstrafik. Selve modellen kører i en midlertidig mappe uden for agent-mappen, i en sikker Windows-sandkasse: MXC på nyere Windows 11, ellers Codex' egen "elevated"-sandkasse. Kommandoer, den forsøger at køre på computeren, kan ikke skrive filer, har intet netværk og kan ikke læse filer i din brugermappe (fx Dokumenter, Skrivebord, browserprofiler og login-filer) ud over den midlertidige mappe. Med den ældre sandkasse kan de se navne på mapper og filer, men ikke indholdet; med MXC heller ikke navnene. Agenten slår Codex' shell, websøgning og andre værktøjer fra og bruger ikke din egen Codex-opsætning, MCP-servere eller regler. Kan sandkassen ikke starte, kører agenten ikke Codex, og den skifter aldrig til en svagere sandkasse.
-  - Med API-nøgle kan AI'en kun se de billeder, agenten selv sender.
+  - Med API-nøgle kan AI'en kun se de billeder, agenten selv sender. Som standard er det ingen.
 
 ### Sendes data til USA, og er det lovligt?
 
@@ -339,7 +339,7 @@ Ja, Aula-indholdet sendes til Claude (Anthropic) eller ChatGPT (OpenAI), og begg
 - Outlook-adgangen bruger Microsofts offentlige app til Graph PowerShell, fordi personlige konti ikke kan oprette egne app-registreringer uden Azure. Microsoft kan ændre det. Har du din egen app-registrering, kan du sætte `graph_client_id` i config.
 - AI'en kan tolke det samme lidt forskelligt fra kørsel til kørsel. Ugemailen og `runs`-mappen viser, hvad der skete.
 - Ugeplaner afhænger af, hvilket system skolen bruger, og af at læreren skriver det i ugeplanen. Kør `agent.py ugeplan` for at se, hvad agenten finder hos jer.
-- Tekst i billeder læses med Windows' tekstgenkendelse. Trykt tekst læses godt; håndskrift, pyntede skrifttyper og uskarpe fotos kan give fejl eller ingenting, og så står der i ugemailen, at du selv skal se billedet i Aula. Mangler Windows dansk sprogpakke, kan æ, ø og å blive læst forkert.
+- Tekst i billeder læses med Windows' tekstgenkendelse. Trykt tekst læses godt; håndskrift, pyntede skrifttyper og uskarpe fotos kan give fejl eller ingenting. I vores test mistede en pyntet fødselsdagsinvitation klokkeslættet: aftalen kom i kalenderen på den rigtige dato som heldagsaftale med en note om at tjekke invitationen. Virker tekstgenkendelsen slet ikke på computeren (fx hvis Windows mangler den, eller PowerShell er låst på en arbejdscomputer), eller mangler dansk sprogpakke, så æ, ø og å kan blive læst forkert, står det i ugemailen. Tekstgenkendelsen er kun prøvet på én computer med dansk Windows 11.
 - Kun testet på Windows med Outlook. Google Kalender understøttes ikke endnu.
 
 ## Feedback
