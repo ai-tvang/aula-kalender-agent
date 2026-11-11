@@ -234,7 +234,7 @@ Billeder bliver skaleret ned, før de sendes. Med API-nøgle ser AI'en kun dem, 
 
 Agenten er udviklet og testet med Claude Opus. ChatGPT-understøttelsen er ny, og kvaliteten kan svinge:
 
-- **Med ChatGPT Go eller Free** bruger Codex en mindre model (GPT-6 Luna). Vi har sammenlignet den med Claude Opus på tre rigtige kørsler: Fri-tiderne var de samme, og huskelisten var næsten den samme. Men Luna overså flere ting i ugemailen, fx et kontaktforældremøde og dage, hvor begge børn havde noget samtidig, og satte et par punkter på det forkerte barn.
+- **Med ChatGPT Go eller Free** bruger Codex en mindre model (GPT-6 Luna). Vi har sammenlignet den med Claude Opus på tre rigtige kørsler: Fri-tiderne var de samme, og huskelisten var næsten den samme. Men Luna overså flere ting i ugemailen, fx et kontaktforældremøde og dage, hvor begge børn havde noget samtidig, og satte et par punkter på det forkerte barn. I en fjerde kørsel (11. nov. 2026) fik kun 2 af ugens 10 fri-tider en tid, ugemailen fik ét punkt, hvor Claude Opus fandt fire, og en note om varmt tøj kom på den forkerte fødselsdag. Aftalerne i kalenderen var de samme som med Claude. Regn derfor med, at kalenderen er til at stole på, men at ugemailen og huskelisten kan mangle noget.
 - **Med ChatGPT Plus eller højere** bruger agenten GPT-6.1 Sol, og med API-nøgle også GPT-6.1 Sol som standard. Sol og den større GPT-6 Astra er ikke testet på rigtige kørsler endnu. I uafhængige test ligger de tæt på Claude Opus, så kvaliteten vil sandsynligvis være bedre end med Go og Free.
 
 Kig ugemailen og kalenderen igennem de første uger, og skriv gerne i [Feedback](#feedback), hvad der manglede.
