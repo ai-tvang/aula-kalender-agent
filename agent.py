@@ -909,6 +909,7 @@ async def aula_fetch(cfg: dict, since: datetime, week: tuple[date, date] | None 
     client = await aula_client(cfg)
     async with client:
         prof = await client.get_profile()
+        _names_state["people"] = await fetch_people(client, prof) if cfg.get("hide_names", True) else []
 
         posts: list[dict] = []
         seen_posts: set = set()
@@ -2360,6 +2361,165 @@ def run_codex(cfg: dict, prompt: str, run_dir: Path, images: list[str] | None = 
         shutil.rmtree(work, ignore_errors=True)
 
 
+# --------------------------------------------------------------------------- #
+# Navne: andre end familien får dæknavne, før noget sendes til AI'en
+# --------------------------------------------------------------------------- #
+_names_state: dict = {"people": []}  # (navn, rolle) fra Aulas gruppelister. Bliver på computeren.
+NAME_LABELS = {"child": "Barn", "guardian": "Forælder", "employee": "Medarbejder"}
+NAME_MAX_GROUPS = 40
+# Fornavne, der også er almindelige ord. De skjules ikke som første ord i en sætning ("Hans mor kommer").
+NAME_ALSO_WORDS = {
+    "Hans", "Bo", "Liv", "Mark", "Sol", "Storm", "Vilje", "Saga", "Silke", "Maj", "Juni", "August", "Dag",
+    "Tor", "Ask", "Eg", "Bjørn", "Ulv", "Rose", "Sten", "Birk", "Lærke", "Vibe", "Svane", "Falk", "Ravn",
+    "Due", "Lilje", "Viol", "Else", "Line", "Bent", "Stig", "Rune", "Gry", "Fie", "Mie", "Asger", "Skjold",
+}
+MASK_SKIP_KEYS = {"key", "image_file", "date", "end_date", "start", "end", "time", "today", "new_since",
+                  "weekday_today", "from", "to", "type"}
+NAMES_HINT = (
+    'Navne på andre end familien er erstattet med dæknavne som "Barn 3", "Forælder 5" og "Medarbejder 2". '
+    "Samme dæknavn er altid samme person. Brug dæknavnene præcis som de står (fx \"Barn 3s fødselsdag\"); "
+    "de rigtige navne sættes ind igen bagefter."
+)
+
+
+async def fetch_people(client, prof) -> list[tuple[str, str]]:
+    """Navne og roller fra de Aula-grupper, børnene er med i. Bruges kun lokalt til at skjule navne."""
+    people: list[tuple[str, str]] = []
+    seen: set = set()
+    try:
+        for c in prof.children:
+            for g in await client.get_groups(child_institution_profile_ids=[c.id]):
+                if g.id in seen or len(seen) >= NAME_MAX_GROUPS:
+                    continue
+                seen.add(g.id)
+                try:
+                    for m in await client.get_group_members(g.id):
+                        if m.name:
+                            people.append((m.name, m.portal_role or ""))
+                except Exception as e:  # noqa: BLE001
+                    log.debug("Gruppelisten for %s kunne ikke hentes: %s", g.name, e)
+    except Exception as e:  # noqa: BLE001
+        log.warning("Navnelister kunne ikke hentes fra Aula, så kun afsendernavne skjules: %s", _short(e))
+    log.info("Navne: %d navne fra %d Aula-grupper bruges til at skjule navne (bliver på computeren)",
+             len({n for n, _ in people}), len(seen))
+    return people
+
+
+def _name_tokens(name: str) -> list[str]:
+    name = re.sub(r"\(.*?\)", " ", name or "")
+    return [t for t in re.split(r"[\s,]+", name) if len(t) >= 2 and t[0].isupper()]
+
+
+class NameMask:
+    """Erstatter navne på andre end familien med dæknavne og sætter dem tilbage i AI'ens svar.
+
+    Fornavne (og efternavne lige efter et fornavn) fra Aulas gruppelister og fra afsendere skjules.
+    Forælderens og egne børns navne skjules ikke; dem skal AI'en bruge. Navne, der ikke står på
+    nogen liste, og efternavne, der står alene, slipper igennem.
+    """
+
+    def __init__(self, cfg: dict, people: list[tuple[str, str]]):
+        self.keep = {w.lower() for w in _name_tokens(cfg.get("parent", {}).get("name", ""))}
+        for c in cfg.get("children", []):
+            self.keep |= {w.lower() for w in _name_tokens(c.get("name", ""))}
+        self.persons: dict[tuple, dict] = {}   # navnets ord -> person
+        self.by_first: dict[str, list[dict]] = {}
+        self.back: dict[str, str] = {}         # dæknavn -> tekst, der sættes tilbage
+        self.shared: dict[str, str] = {}       # fornavn, flere deler -> fælles dæknavn
+        self.counts: dict[str, int] = {}
+        self._rx = None
+        for name, role in people:
+            self.add(name, role)
+
+    def _alias(self, label: str, restore: str) -> str:
+        self.counts[label] = self.counts.get(label, 0) + 1
+        alias = f"{label} {self.counts[label]}"
+        self.back[alias] = restore
+        return alias
+
+    def add(self, name: str, role: str = "") -> None:
+        tokens = _name_tokens(name)
+        if not tokens or tokens[0].lower() in self.keep:
+            return
+        key = tuple(t.lower() for t in tokens)
+        label = NAME_LABELS.get((role or "").lower(), "Person")
+        if key in self.persons:
+            if self.persons[key]["label"] == "Person" and label != "Person":
+                self.persons[key]["label"] = label
+            return
+        person = {"tokens": tokens, "rest": {t.lower() for t in tokens[1:]}, "label": label, "alias": None}
+        self.persons[key] = person
+        self.by_first.setdefault(tokens[0], []).append(person)
+        self._rx = None
+
+    def add_from_payload(self, payload: dict) -> None:
+        """Afsendere og forfattere, der ikke stod på gruppelisterne."""
+        for p in payload.get("posts", []):
+            self.add(p.get("author") or "", {"employee": "employee", "guardian": "guardian",
+                                             "child": "child"}.get(str(p.get("author_role") or "").lower(), ""))
+        for t in payload.get("threads", []):
+            for m in t.get("messages", []):
+                self.add(m.get("sender") or "")
+
+    def _person_alias(self, person: dict) -> str:
+        if not person["alias"]:
+            first = person["tokens"][0]
+            alone = len(self.by_first[first]) == 1
+            person["alias"] = self._alias(person["label"], first if alone else " ".join(person["tokens"]))
+        return person["alias"]
+
+    def _shared_alias(self, first: str) -> str:
+        if first not in self.shared:
+            labels = {p["label"] for p in self.by_first[first]}
+            self.shared[first] = self._alias(labels.pop() if len(labels) == 1 else "Person", first)
+        return self.shared[first]
+
+    def mask_text(self, text: str) -> str:
+        if not text or not self.by_first:
+            return text
+        if self._rx is None:
+            names = sorted(self.by_first, key=len, reverse=True)
+            self._rx = re.compile(r"(?<![\w\-])(" + "|".join(re.escape(n) for n in names) + r")(?=(?:s|'s|’s)?(?![\w]))")
+        out, pos = [], 0
+        for m in self._rx.finditer(text):
+            if m.start() < pos:
+                continue
+            first = m.group(1)
+            if first in NAME_ALSO_WORDS and re.search(r"(^|[.!?:\n]\s*)$", text[max(0, m.start() - 3): m.start()]):
+                continue
+            cands = self.by_first[first]
+            end, used = m.end(), set()
+            while True:  # Efternavne og mellemnavne lige efter fornavnet hører med til navnet.
+                nxt = re.match(r"[ \t]+([A-ZÆØÅ][\w\-]*)", text[end:])
+                if not nxt or not any(nxt.group(1).lower() in p["rest"] for p in cands):
+                    break
+                used.add(nxt.group(1).lower())
+                end += nxt.end()
+            match = [p for p in cands if used <= p["rest"]] if used else cands
+            alias = self._person_alias(match[0]) if len(match) == 1 else self._shared_alias(first)
+            out.append(text[pos: m.start()] + alias)
+            pos = end
+        out.append(text[pos:])
+        return "".join(out)
+
+    def mask(self, obj):
+        if isinstance(obj, dict):
+            return {k: (v if k in MASK_SKIP_KEYS else self.mask(v)) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [self.mask(v) for v in obj]
+        return self.mask_text(obj) if isinstance(obj, str) else obj
+
+    def restore(self, obj):
+        if isinstance(obj, dict):
+            return {k: (v if k == "key" else self.restore(v)) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [self.restore(v) for v in obj]
+        if isinstance(obj, str) and self.back:
+            return re.sub(r"\b(Barn|Forælder|Medarbejder|Person) (\d+)(?!\d)",
+                          lambda m: self.back.get(m.group(0), m.group(0)), obj)
+        return obj
+
+
 def payload_images(payload: dict) -> list[str]:
     """Alle image_file-felter i data, i rækkefølge."""
     found: list[str] = []
@@ -2391,10 +2551,16 @@ IMAGE_HINTS = {
 def run_ai(cfg: dict, payload: dict, run_dir: Path) -> dict:
     mode = ai_mode(cfg)
     rules = RULES_FILE.read_text(encoding="utf-8")
+    names = None
+    if cfg.get("hide_names", True):
+        names = NameMask(cfg, _names_state.get("people") or [])
+        names.add_from_payload(payload)
+        payload = names.mask(payload)
     prompt = (
         f"{rules}\n{family_section(cfg)}\n{OUTPUT_SPEC}\n"
         "## Data\n"
-        f"{IMAGE_TEXT_HINT if images_mode(cfg) == 'text' else IMAGE_HINTS[mode]}\n\n"
+        f"{IMAGE_TEXT_HINT if images_mode(cfg) == 'text' else IMAGE_HINTS[mode]}\n"
+        f"{NAMES_HINT if names and names.back else ''}\n\n"
         f"```json\n{json.dumps(payload, ensure_ascii=False, indent=1)}\n```\n"
     )
     (run_dir / "prompt.md").write_text(prompt, encoding="utf-8")
@@ -2422,6 +2588,11 @@ def run_ai(cfg: dict, payload: dict, run_dir: Path) -> dict:
     if not isinstance(result, dict):
         raise RuntimeError(f"{ai_name(cfg)} svarede ikke i det forventede format.")
     save_json(run_dir / "ai_result.json", result)
+    if names and names.back:
+        # Nøglen til dæknavnene bliver på computeren og slettes sammen med kørslens mappe.
+        save_json(run_dir / "navne.json", names.back)
+        log.info("Navne: %d dæknavne brugt i det, der blev sendt til %s", len(names.back), ai_name(cfg))
+        result = names.restore(result)
     return result
 
 

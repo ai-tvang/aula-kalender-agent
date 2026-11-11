@@ -13,7 +13,7 @@ Onsdag 11/11
 
 Under huskelisten står de nye aftaler og ting, du bør kigge på selv: tilbud fra klubben, usikre datoer og dage, hvor flere børn har noget samtidig.
 
-**Kører på din egen computer.** Login, indstillinger og din kalender bliver hos dig, og login er krypteret med Windows. Intet sendes til forfatteren af agenten, og der er ingen statistik eller sporing. Men **Aula-indholdet sendes til den AI, du vælger**, Claude (Anthropic) eller ChatGPT (OpenAI), for at blive læst. Det omfatter beskeder fra lærere og andre forældre og dermed også navne på andre forældre og børn. Ud over selve installationen taler agenten kun med Aula (og skolens ugeplansystem via Aula), din Outlook-konto og den AI. Se præcis hvad der sendes under [Privatliv og sikkerhed](#det-sendes-til-aien).
+**Kører på din egen computer.** Login, indstillinger og din kalender bliver hos dig, og login er krypteret med Windows. Intet sendes til forfatteren af agenten, og der er ingen statistik eller sporing. Men **Aula-indholdet sendes til den AI, du vælger**, Claude (Anthropic) eller ChatGPT (OpenAI), for at blive læst. Det omfatter beskeder fra lærere og andre forældre. Navne på andre børn, forældre og lærere bliver erstattet med dæknavne ("Barn 3", "Forælder 5"), før noget sendes, og sat ind igen på din computer bagefter. Enkelte navne kan slippe igennem. Ud over selve installationen taler agenten kun med Aula (og skolens ugeplansystem via Aula), din Outlook-konto og den AI. Se præcis hvad der sendes under [Privatliv og sikkerhed](#det-sendes-til-aien).
 
 **Open source.** Agenten er gratis og må bruges af alle (MIT-licens). Den virker med både Claude og ChatGPT. Der arbejdes på andre kalendere (fx iPhone og Google) og andre mailtjenester. [Feedback](#feedback) er meget velkommen.
 
@@ -159,6 +159,7 @@ Du kan også rette filen selv. Felterne:
 | `openai_effort` | Hvor grundigt OpenAI-modellen tænker: `low`, `medium`, `high` (standard), `xhigh` eller `max`. |
 | `ugeplan` | `false` slår skema, ugeplaner og huskelisten fra. Standard `true`. |
 | `keep_runs_days` | Hvor mange dage kopier af Aula-indhold gemmes i `runs` (standard 7). |
+| `hide_names` | `true` (standard): navne på andre end din egen familie erstattes med dæknavne som "Barn 3" og "Forælder 5", før indholdet sendes til AI'en, og sættes ind igen i kalenderen og ugemailen bagefter. Navnene findes ud fra Aulas lister over de grupper, dine børn er med i, og ud fra afsenderne. `false`: navne sendes, som de står. |
 | `send_images` | Hvad der sker med vedhæftede billeder. `text` (standard): teksten i billedet læses på din computer med Windows' indbyggede tekstgenkendelse (OCR), og kun teksten sendes til AI'en. Billedet selv sendes aldrig og slettes straks. Fotos uden tekst giver ingenting. `auto`: selve billedet sendes, men kun når et opslag eller en besked har højst 3 billeder, teksten ikke handler om fotos, og teksten er kort eller nævner en invitation, vedhæftning eller et program. `always`: alle billeder i nye opslag og beskeder sendes. `never`: billeder hverken læses eller sendes. |
 
 ## Kalender-links
@@ -284,7 +285,7 @@ Alt det, AI'en skal tage med eller springe over, står i `regler.md` på alminde
 | `aula_tokens.dat` | At læse dit Aula (beskeder, opslag, børnenes data). Ikke MitID, bank eller borger.dk | Krypteret med Windows (DPAPI) |
 | `graph_token_cache.dat` | At læse og skrive din kalender og sende mail fra din Outlook-konto | Krypteret med Windows (DPAPI) |
 | `config.json` | Indstillinger. Med API-nøgle også nøglen, som giver adgang til at bruge Claude eller OpenAI på din regning | API-nøglen er krypteret med Windows (DPAPI) |
-| `runs\` | Kopier af det, AI'en læste (beskeder fra andre forældre, referater) | Slettes efter 7 dage. Vedhæftede filer og billeder slettes lige efter kørslen |
+| `runs\` | Kopier af det, AI'en læste (beskeder fra andre forældre, referater) og nøglen til dæknavnene (`navne.json`) | Slettes efter 7 dage. Vedhæftede filer og billeder slettes lige efter kørslen |
 
 Krypteringen er bundet til din Windows-bruger på netop denne computer. En kopi af filerne virker ikke på en anden computer eller hos en anden bruger. Den beskytter ikke mod nogen, der er logget ind som dig, eller mod skadelig software, der kører som dig. Slå derfor også **BitLocker** (Windows' diskkryptering) til, og brug en adgangskode eller PIN på din Windows-bruger.
 
@@ -297,15 +298,15 @@ Agenten filtrerer ikke på dine børn, før indholdet sendes. Den sender alle op
 | Sendes | Sendes ikke |
 |---|---|
 | `regler.md` og et afsnit om familien fra `config.json`: dit navn som i Aula, børnenes fornavne, klasse, skole, Aula-grupper, klubber og dine noter | MitID-brugernavn og -adgangskode, Aula- og Outlook-login, API-nøgler |
-| Opslag: titel, dato, tekst, forfatterens navn og rolle, grupper | Deltagerlisten i tråde (navne på alle forældre og børn i tråden). Højst antallet sendes. I vores test leverede Aula slet ikke listen |
+| Opslag: titel, dato, tekst, forfatterens rolle, grupper. Forfatterens navn er erstattet af et dæknavn | Deltagerlisten i tråde (navne på alle forældre og børn i tråden). Højst antallet sendes. I vores test leverede Aula slet ikke listen |
 | Tråde: emne, og hvilke af dine egne børn tråden vedrører (fornavn fra `config.json`) | Billeder i Aulas galleri og profilbilleder |
-| Beskeder: afsenderens navn og Aulas beskrivelse af afsenderen (fx "Anne 2A"), dato og tekst. Nye beskeder og op til 30 ældre pr. tråd | Kontaktlister, Aula-dokumenter (Sikker fildeling) |
-| Teksten fra vedhæftede PDF- og Word-filer i nye opslag og beskeder (op til 20.000 tegn pr. fil). Referater kan indeholde navne | Vedhæftninger i ældre beskeder (kun filnavnet) |
-| Teksten i vedhæftede billeder i nye opslag og beskeder, læst på din egen computer (op til 3.000 tegn pr. billede, højst 10 billeder pr. opslag eller besked). Navne i teksten sendes med | Selve billederne, så længe `send_images` er `text` (standard) eller `never`. Fotos uden tekst giver ingenting; AI'en får kun at vide, at der var et billede |
+| Beskeder: afsenderen som dæknavn (fx "Forælder 5"), Aulas beskrivelse af afsenderen, dato og tekst. Nye beskeder og op til 30 ældre pr. tråd | Kontaktlister, Aula-dokumenter (Sikker fildeling) |
+| Teksten fra vedhæftede PDF- og Word-filer i nye opslag og beskeder (op til 20.000 tegn pr. fil), med dæknavne i stedet for kendte navne | Vedhæftninger i ældre beskeder (kun filnavnet) |
+| Teksten i vedhæftede billeder i nye opslag og beskeder, læst på din egen computer (op til 3.000 tegn pr. billede, højst 10 billeder pr. opslag eller besked). Kendte navne i teksten erstattes af dæknavne | Selve billederne, så længe `send_images` er `text` (standard) eller `never`. Fotos uden tekst giver ingenting; AI'en får kun at vide, at der var et billede |
 | Skema, ugeplan og Huskelisten for den kommende skoleuge | |
 | Aftaler, der allerede står i din kalender "Skole og fritid", så der ikke kommer dubletter | Dine andre Outlook-kalendere og din mail |
 
-- **Navne på andre sendes stadig** gennem beskedernes tekst, afsendernavne og referater. Det kan ikke undgås, når AI'en skal læse beskederne. Vær bevidst om det, før du slår agenten til.
+- **Navne på andre erstattes med dæknavne**, før indholdet sendes: "Hugo fylder 7" bliver til "Barn 3 fylder 7", og afsenderen bliver til "Forælder 5". Listen over, hvem der er hvem, bliver på din computer, og de rigtige navne sættes ind igen i kalenderen og ugemailen. Agenten finder navnene i Aulas lister over de grupper, dine børn er med i (klasse, årgang, SFO), og blandt afsenderne. **Det fanger ikke alt:** navne, der ikke står på listerne (fx søskende i andre klasser, bedsteforældre, kælenavne og stavefejl), efternavne, der står alene, og navne i billeder med utydelig tekst slipper igennem. Dit eget navn og dine børns fornavne skjules ikke, heller ikke når en anden hedder det samme. Indholdet kan stadig knyttes til personer via skole og klasse, så det er fortsat personoplysninger.
 - **Claude:** Med API-nøgle bruges indholdet ikke til træning og slettes inden for 30 dage. Med Claude Code (abonnement) opbevares det i 30 dage. Har du tilladt træning i Claudes privatlivsindstillinger (claude.ai/settings/data-privacy-controls), bruges det til træning og opbevares op til 5 år.
 - **ChatGPT og OpenAI:** Med OpenAI API-nøgle bruges indholdet ikke til træning, og det opbevares op til 30 dage i OpenAIs logs til misbrugsovervågning. Agenten beder om, at svarene ikke gemmes som lagrede svar i API'et, men det ændrer ikke de 30 dage. Med et ChatGPT-abonnement (Codex) kan OpenAI bruge indholdet til træning, medmindre du slår det fra: chatgpt.com > **Indstillinger > Datastyring > Gør modellen bedre for alle** = fra. Indstillingen gælder hele din ChatGPT-konto. OpenAIs hjælpeside nævner ikke Codex specifikt, så vi går ud fra, at den også gælder Codex. Med ChatGPT-login følger opbevaringen din ChatGPT-kontos vilkår; OpenAI angiver ikke en særskilt periode for Codex. At slå træning fra betyder ikke, at OpenAI ikke opbevarer noget.
 - **For alle udbydere:** Ved mistanke om misbrug eller krav i loven kan data opbevares længere.
@@ -317,7 +318,7 @@ Agenten filtrerer ikke på dine børn, før indholdet sendes. Den sender alle op
 
 ### Sendes data til USA, og er det lovligt?
 
-Ja, Aula-indholdet sendes til Claude (Anthropic) eller ChatGPT (OpenAI), og begge behandler data i USA. Det gælder også beskeder fra lærere og andre forældre, navne på andre børn i beskeder og referater og teksten i vedhæftede billeder. Selve billederne sendes ikke, medmindre du selv ændrer `send_images`. Dine logins og din kalender bliver på din egen computer, og intet sendes til mig.
+Ja, Aula-indholdet sendes til Claude (Anthropic) eller ChatGPT (OpenAI), og begge behandler data i USA. Det gælder også beskeder fra lærere og andre forældre, referater og teksten i vedhæftede billeder. Kendte navne på andre er erstattet med dæknavne (se ovenfor), men enkelte kan slippe igennem. Selve billederne sendes ikke, medmindre du selv ændrer `send_images`. Dine logins og din kalender bliver på din egen computer, og intet sendes til mig.
 
 **Slå træning fra.** Se ovenfor, hvor indstillingen findes i Claude og ChatGPT. Med træning slået fra slettes data efter højst 30 dage. Med en API-nøgle bruges data aldrig til træning. Med træning slået til kan andre familiers beskeder indgå i træningsdata i op til 5 år, og det synes jeg ikke, man skal gøre.
 
@@ -340,6 +341,7 @@ Ja, Aula-indholdet sendes til Claude (Anthropic) eller ChatGPT (OpenAI), og begg
 - AI'en kan tolke det samme lidt forskelligt fra kørsel til kørsel. Ugemailen og `runs`-mappen viser, hvad der skete.
 - Ugeplaner afhænger af, hvilket system skolen bruger, og af at læreren skriver det i ugeplanen. Kør `agent.py ugeplan` for at se, hvad agenten finder hos jer.
 - Tekst i billeder læses med Windows' tekstgenkendelse. Trykt tekst læses godt; håndskrift, pyntede skrifttyper og uskarpe fotos kan give fejl eller ingenting. I vores test mistede en pyntet fødselsdagsinvitation klokkeslættet: aftalen kom i kalenderen på den rigtige dato som heldagsaftale med en note om at tjekke invitationen. Virker tekstgenkendelsen slet ikke på computeren (fx hvis Windows mangler den, eller PowerShell er låst på en arbejdscomputer), eller mangler dansk sprogpakke, så æ, ø og å kan blive læst forkert, står det i ugemailen. Tekstgenkendelsen er kun prøvet på én computer med dansk Windows 11.
+- Dæknavne kan ramme forkert: et fornavn, der også er et almindeligt ord (fx Storm, Liv eller Bjørn), kan blive erstattet midt i en sætning, hvor det ikke var et navn. Det rettes tilbage i resultatet, men kan gøre AI'en lidt mindre præcis.
 - Kun testet på Windows med Outlook. Google Kalender understøttes ikke endnu.
 
 ## Feedback
