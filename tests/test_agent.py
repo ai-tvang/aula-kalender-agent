@@ -1,6 +1,7 @@
 """Tests af repo-versionen med falske svar. Kør: python3 test_repo.py <repo-mappe>"""
 import asyncio
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -243,6 +244,31 @@ check("OCR: besked når dansk mangler", "dansk tekstgenkendelse" in agent.ocr_pr
 agent._ocr_state.clear()
 check("OCR: højst 10 billeder hentes pr. opslag", len(fh3.urls) == agent.IMAGE_TEXT_MAX_FILES)
 check("OCR: uden Windows findes OCR ikke (None)", agent.sys.platform == "win32" or real_ocr([att_dir / "x.png"]) is None)
+
+# 2g. Navne på andre end familien får dæknavne og sættes tilbage i svaret
+ncfg = {"parent": {"name": "Thomas Vang"}, "children": [{"name": "Peter"}, {"name": "Jakob"}]}
+nm = agent.NameMask(ncfg, [("Hugo Jensen", "child"), ("Louise Holm Hansen (Hugo 1.B)", "guardian"), ("Hans Skov", "guardian"),
+                           ("Emma Lund", "child"), ("Emma Bak", "child"), ("Mette Dam", "employee"), ("Peter Olsen", "child")])
+npl = {"posts": [{"author": "Mette Dam", "author_role": "employee", "date": "2030-11-09", "key": "aula:1:hugo",
+                  "text": "Hans mor kommer. Vi mødes med Hans Skov og Emma Lund. Emma og Peter kommer også."}],
+       "threads": [{"subject": "Hugos fødselsdag", "messages": [
+           {"sender": "Louise Holm Hansen", "text": "Hugo fylder 7. Hilsen Louise og Karen Ny"}]},
+           {"subject": "Svar", "messages": [{"sender": "Karen Ny", "text": "Vi kommer"}]}]}
+nm.add_from_payload(npl)
+nx = nm.mask(npl)
+ntext = json.dumps(nx, ensure_ascii=False)
+check("Navne: børn, forældre og medarbejdere får dæknavne", not any(n in ntext for n in ("Hugo", "Louise", "Skov", "Emma", "Mette", "Karen")))
+check("Navne: rollen fremgår af dæknavnet", nx["posts"][0]["author"].startswith("Medarbejder ") and nx["threads"][0]["messages"][0]["sender"].startswith("Forælder "))
+check("Navne: ejefald bevares", re.fullmatch(r"Barn \d+s fødselsdag", nx["threads"][0]["subject"]) is not None)
+check("Navne: familiens egne navne skjules ikke", "Peter kommer" in nx["posts"][0]["text"])
+check("Navne: 'Hans' først i en sætning er ikke et navn", nx["posts"][0]["text"].startswith("Hans mor"))
+check("Navne: samme person får samme dæknavn", nx["threads"][0]["messages"][0]["sender"] in nx["threads"][0]["messages"][0]["text"])
+check("Navne: nøgler og datoer røres ikke", nx["posts"][0]["key"] == "aula:1:hugo" and nx["posts"][0]["date"] == "2030-11-09")
+hugo = nx["threads"][0]["subject"].split("s fød")[0]
+back = nm.restore({"title": f"{hugo}s fødselsdag", "notes": f"{nx['threads'][0]['messages'][0]['sender']} inviterer.", "key": "aula:1:barn-1"})
+check("Navne: sættes tilbage i svaret", back["title"] == "Hugos fødselsdag" and back["notes"] == "Louise inviterer." and back["key"] == "aula:1:barn-1")
+check("Navne: to med samme fornavn holdes adskilt", sorted(v for v in nm.back.values() if v.startswith("Emma")) == ["Emma", "Emma Lund"])
+check("Navne: uden navneliste ændres intet", agent.NameMask(ncfg, []).mask({"t": "Hugo kommer"}) == {"t": "Hugo kommer"})
 
 # 3. weekly med husk, og med login-fejl i begge tilstande
 agent.sync_feeds = lambda *a: {"ny": 0}
