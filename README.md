@@ -19,6 +19,8 @@ Under huskelisten står de nye aftaler og ting, du bør kigge på selv: tilbud f
 
 **Du skal bruge:** en Windows-computer, en personlig Outlook-konto (fx @outlook.com eller @hotmail.com), MitID-appen og enten et Claude- eller ChatGPT-abonnement eller en API-nøgle. Se [Det skal du have](#det-skal-du-have).
 
+> **Vigtigt om abonnement:** Brug Claude Pro eller Max, ChatGPT Plus eller Pro, eller en API-nøgle. Med ChatGPT Go eller Free får du store mangler i ugemailen og huskelisten, fordi de abonnementer kun giver adgang til en mindre model. Se [Kvalitet med ChatGPT](#kvalitet-med-chatgpt).
+
 > Uofficielt projekt. Det er ikke lavet eller godkendt af Aula, KL, STIL eller Netcompany, og det bruger Aulas interne API, som kan ændre sig uden varsel.
 
 ## Hvad den gør
@@ -42,7 +44,7 @@ Hver uge (som standard søndag kl. 7):
 - **En personlig Outlook-konto** (@outlook.com, @hotmail.com, @live.dk). Arbejdskonti blokerer ofte for den slags adgang. Outlook-appen skal ikke være installeret; agenten logger selv ind.
 - **Adgang til Claude eller ChatGPT** på én af fire måder. Installationen spørger, hvilket abonnement du har:
   - **Claude Code (anbefalet)** med et betalt Claude-abonnement (Pro eller Max). Kørslerne tæller med i dit almindelige forbrug og koster ikke ekstra. Claude-appen er ikke nok, men installationen installerer Claude Code for dig, og du logger ind én gang undervejs.
-  - **Codex** med et ChatGPT-abonnement (Plus, Pro, Go eller Free). Codex følger med abonnementet, og kørslerne bruger af den Codex-kvote, abonnementet giver. Du betaler ikke ekstra, men der er forbrugsgrænser, som afhænger af abonnementet. ChatGPT-appen er ikke nok, men installationen installerer Codex (OpenAIs program til kommandolinjen) for dig, og du logger ind med din ChatGPT-konto én gang. Se [Kvalitet med ChatGPT](#kvalitet-med-chatgpt).
+  - **Codex** med et ChatGPT-abonnement (Plus eller Pro). Go og Free virker teknisk, men giver store mangler i ugemailen og huskelisten og kan ikke anbefales. Codex følger med abonnementet, og kørslerne bruger af den Codex-kvote, abonnementet giver. Du betaler ikke ekstra, men der er forbrugsgrænser, som afhænger af abonnementet. ChatGPT-appen er ikke nok, men installationen installerer Codex (OpenAIs program til kommandolinjen) for dig, og du logger ind med din ChatGPT-konto én gang. Se [Kvalitet med ChatGPT](#kvalitet-med-chatgpt).
   - **Claude API-nøgle** fra [console.anthropic.com](https://console.anthropic.com/settings/keys). Du betaler pr. kørsel, i dag omkring 6-10 kr. om måneden med Opus (se [Pris](#pris)). Kræver betalingskort og lidt kredit.
   - **OpenAI API-nøgle** fra [platform.openai.com](https://platform.openai.com/api-keys). Du betaler pr. kørsel. Et ChatGPT-abonnement giver ikke API-adgang; den betales for sig. Kræver betalingskort og lidt kredit.
 - **Dit login til Claude eller ChatGPT** (e-mail og adgangskode eller Google/Apple-login). Installationen åbner browseren og beder dig logge ind. Er du allerede logget ind på claude.ai eller chatgpt.com i browseren, går det hurtigere.
@@ -232,9 +234,9 @@ Billeder bliver skaleret ned, før de sendes. Med API-nøgle ser AI'en kun dem, 
 
 ### Kvalitet med ChatGPT
 
-Agenten er udviklet og testet med Claude Opus. ChatGPT-understøttelsen er ny, og kvaliteten kan svinge:
+Agenten er udviklet og testet med Claude Opus. ChatGPT-understøttelsen er ny, og kvaliteten kan svinge. **Brug ChatGPT Plus eller Pro eller en API-nøgle. Med Go eller Free skal du regne med store mangler:**
 
-- **Med ChatGPT Go eller Free** bruger Codex en mindre model (GPT-6 Luna). Vi har sammenlignet den med Claude Opus på tre rigtige kørsler: Fri-tiderne var de samme, og huskelisten var næsten den samme. Men Luna overså flere ting i ugemailen, fx et kontaktforældremøde og dage, hvor begge børn havde noget samtidig, og satte et par punkter på det forkerte barn.
+- **Med ChatGPT Go eller Free** bruger Codex en mindre model (GPT-6 Luna). Vi har sammenlignet den med Claude Opus på tre rigtige kørsler: Fri-tiderne var de samme, og huskelisten var næsten den samme. Men Luna overså flere ting i ugemailen, fx et kontaktforældremøde og dage, hvor begge børn havde noget samtidig, og satte et par punkter på det forkerte barn. I en fjerde kørsel (11. nov. 2026) fik kun 2 af ugens 10 fri-tider en tid, ugemailen fik ét punkt, hvor Claude Opus fandt fire, og en note om varmt tøj kom på den forkerte fødselsdag. Aftalerne i kalenderen var de samme som med Claude. Regn derfor med, at kalenderen er til at stole på, men at ugemailen og huskelisten kan mangle noget.
 - **Med ChatGPT Plus eller højere** bruger agenten GPT-6.1 Sol, og med API-nøgle også GPT-6.1 Sol som standard. Sol og den større GPT-6 Astra er ikke testet på rigtige kørsler endnu. I uafhængige test ligger de tæt på Claude Opus, så kvaliteten vil sandsynligvis være bedre end med Go og Free.
 
 Kig ugemailen og kalenderen igennem de første uger, og skriv gerne i [Feedback](#feedback), hvad der manglede.
