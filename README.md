@@ -64,13 +64,13 @@ Hver uge (som standard søndag kl. 7):
 
    Derefter opretter scriptet en ugentlig kørsel søndag kl. 7 og laver første kørsel med det samme (læser 30 dage tilbage). Kan agenten ikke finde et barns klasse, bliver du spurgt om den.
 
-Agenten ligger bagefter i `C:\Users\<dig>\Aula-kalenderagent`, og i **Start-menuen > Aula-kalenderagent** finder du genvejene **Kør nu**, **Log ind på Aula igen**, **Log ind på Outlook igen**, **Opsætning** og **Åbn agent-mappen**. Du skal ikke bruge PowerShell igen.
+Agenten ligger bagefter i `C:\Users\<dig>\Aula-kalenderagent`, og du finder genvejene ved at søge på **Aula-agent** i Start-menuen: **Aula-agent kør nu**, **Aula-agent log ind på Aula igen**, **Aula-agent log ind på Outlook igen**, **Aula-agent opsætning** og **Aula-agent åbn mappen**. Du skal ikke bruge PowerShell igen.
 
 **Opdatering:** kør samme linje igen. Den finder selv din installation, også hvis du har installeret fra ZIP et andet sted, og dine indstillinger og login bevares.
 
-**Skift AI:** kør **Opsætning** fra Start-menuen, og vælg `claude`, `chatgpt` eller `api` (API-nøgle). Mangler programmet, tilbyder opsætningen at installere det.
+**Skift AI:** kør **Aula-agent opsætning** fra Start-menuen, og vælg `claude`, `chatgpt` eller `api` (API-nøgle). Mangler programmet, tilbyder opsætningen at installere det.
 
-Navne, klasser, Aula-grupper og noter om familien kan rettes bagefter i `config.json`. Kør **Opsætning** fra Start-menuen for at opdatere fra Aula; det, du har rettet, bliver bevaret.
+Navne, klasser, Aula-grupper og noter om familien kan rettes bagefter i `config.json`. Kør **Aula-agent opsætning** fra Start-menuen for at opdatere fra Aula; det, du har rettet, bliver bevaret.
 
 Vil du have en anden dag eller et andet tidspunkt, så åbn PowerShell i agent-mappen og kør `.\opsaet.ps1 -Dag Saturday -Tid "08:00"`.
 
@@ -108,17 +108,17 @@ Du kan indsætte linket til denne side i Claude eller ChatGPT og skrive fx "Hjæ
 | Fejl om, at scripts er deaktiveret ("running scripts is disabled") | Brug linjen fra trin 2. Ved den manuelle vej: kør `powershell -ExecutionPolicy Bypass -File .\opsaet.ps1`. |
 | "STOP: Din brugermappe ligger i OneDrive" | Brug den manuelle vej, og læg mappen uden for OneDrive, fx `C:\Aula-kalenderagent`. |
 | "Python 3.14 kunne ikke installeres" | Installer Python 3.14 fra [python.org](https://www.python.org/downloads/windows/), og kør linjen igen. |
-| `claude` findes ikke, eller Claude Code beder om login under kørslen | Åbn et nyt PowerShell-vindue, kør `claude`, log ind og skriv `/exit`. Kør derefter **Opsætning** fra Start-menuen (eller linjen igen). |
+| `claude` findes ikke, eller Claude Code beder om login under kørslen | Åbn et nyt PowerShell-vindue, kør `claude`, log ind og skriv `/exit`. Kør derefter **Aula-agent opsætning** fra Start-menuen (eller linjen igen). |
 | Du har ikke et Claude-abonnement | Vælg ChatGPT, hvis du har et ChatGPT-abonnement, ellers en API-nøgle (se [Det skal du have](#det-skal-du-have)). |
-| Ugemailen siger, at ChatGPT ikke kunne logge ind | Kør **Opsætning** fra Start-menuen, og sig ja til at logge ind i Codex. Kør derefter **Kør nu**. (Avanceret: `codex login` i PowerShell.) |
-| "Codex kunne ikke starte sin sikre sandkasse" | Kør **Opsætning** fra Start-menuen, og sig ja til at sætte sandkassen op. På ældre Windows beder Windows om administrator-godkendelse. Agenten kører ikke Codex uden sandkassen. (Avanceret: `codex sandbox setup --elevated --current-user`.) |
-| "Codex CLI er for gammel" | Kør **Opsætning** fra Start-menuen, og sig ja til at opdatere Codex. (Avanceret: `npm install -g @openai/codex@latest`.) |
+| Ugemailen siger, at ChatGPT ikke kunne logge ind | Kør **Aula-agent opsætning** fra Start-menuen, og sig ja til at logge ind i Codex. Kør derefter **Aula-agent kør nu**. (Avanceret: `codex login` i PowerShell.) |
+| "Codex kunne ikke starte sin sikre sandkasse" | Kør **Aula-agent opsætning** fra Start-menuen, og sig ja til at sætte sandkassen op. På ældre Windows beder Windows om administrator-godkendelse. Agenten kører ikke Codex uden sandkassen. (Avanceret: `codex sandbox setup --elevated --current-user`.) |
+| "Codex CLI er for gammel" | Kør **Aula-agent opsætning** fra Start-menuen, og sig ja til at opdatere Codex. (Avanceret: `npm install -g @openai/codex@latest`.) |
 | MitID spørger, om du vil logge ind som privatperson eller et firma | Vælg dig selv som privatperson. |
 | "Codes read. Approve the login in your MitID app." | Teksten er på engelsk, men betyder bare: godkend i MitID-appen. |
 | Outlook-login: kode og microsoft.com/link | Åbn microsoft.com/link i browseren, skriv koden, log ind med din personlige Outlook-konto og godkend. Vinduet fortsætter selv. |
 | Outlook-login afvises, eller du bliver bedt om en administrator | Det er sandsynligvis en arbejds- eller skolekonto. Brug en personlig konto, fx en ny gratis @outlook.com. |
-| Opsætningen stoppede halvvejs | Kør linjen eller **Opsætning** igen. Det, der allerede er gemt (fx MitID og Outlook), genbruges. |
-| Ingen ugemail søndag | Computeren var slukket eller i dvale. Agenten kører, når den tændes. Ellers se `logs\agent.log` via **Åbn agent-mappen**. |
+| Opsætningen stoppede halvvejs | Kør linjen eller **Aula-agent opsætning** igen. Det, der allerede er gemt (fx MitID og Outlook), genbruges. |
+| Ingen ugemail søndag | Computeren var slukket eller i dvale. Agenten kører, når den tændes. Ellers se `logs\agent.log` via **Aula-agent åbn mappen**. |
 
 Står din fejl ikke her, så opret et [issue](../../issues) med teksten fra vinduet (uden navne).
 
@@ -241,7 +241,7 @@ Kig ugemailen og kalenderen igennem de første uger, og skriv gerne i [Feedback]
 
 ## Daglig brug
 
-Du skal normalt ikke gøre noget. Vil du køre agenten nu, så brug **Kør nu** i Start-menuen. Kommandoerne til PowerShell (i agent-mappen) er gode at kende:
+Du skal normalt ikke gøre noget. Vil du køre agenten nu, så brug **Aula-agent kør nu** i Start-menuen. Kommandoerne til PowerShell (i agent-mappen) er gode at kende:
 
 ```
 uv run --python-preference only-system agent.py weekly             # kør nu
@@ -259,11 +259,11 @@ Get-Content logs\agent.log -Tail 20                                # se hvad der
 
 Søndagens ugemail siger det øverst. Ved den daglige kørsel får du en mail (eller en fil på skrivebordet, hvis Outlook-login er udløbet):
 
-- **Aula:** Start-menuen > Aula-kalenderagent > **Log ind på Aula igen**, og godkend i MitID-appen. Agenten kører bagefter af sig selv.
-- **Outlook:** Start-menuen > Aula-kalenderagent > **Log ind på Outlook igen**.
+- **Aula:** søg på Aula-agent i Start-menuen, vælg **Aula-agent log ind på Aula igen**, og godkend i MitID-appen. Agenten kører bagefter af sig selv.
+- **Outlook:** **Aula-agent log ind på Outlook igen** i Start-menuen.
 - **Claude Code:** kør `claude`, skriv `/login`, og afslut med `/exit`. Kør derefter `agent.py weekly`.
-- **Codex (ChatGPT):** kør **Opsætning** fra Start-menuen, og sig ja til at logge ind i Codex. Kør derefter **Kør nu**.
-- **API-nøgle afvist:** lav en ny nøgle på console.anthropic.com eller platform.openai.com, og ret `anthropic_api_key` eller `openai_api_key` i `config.json` (eller kør **Opsætning**).
+- **Codex (ChatGPT):** kør **Aula-agent opsætning** fra Start-menuen, og sig ja til at logge ind i Codex. Kør derefter **Aula-agent kør nu**.
+- **API-nøgle afvist:** lav en ny nøgle på console.anthropic.com eller platform.openai.com, og ret `anthropic_api_key` eller `openai_api_key` i `config.json` (eller kør **Aula-agent opsætning**).
 
 Fejler Aula eller AI'en, tager næste kørsel automatisk den mistede periode med.
 

@@ -66,7 +66,13 @@
         Write-Host ""
         Write-Host "Agenten er opdateret. Dine indstillinger og login er bevaret." -ForegroundColor Green
         $svar = Read-Host "Vil du også køre opsætningen igen, fx efter nyt skoleår? [j/N]"
-        if ($svar -notmatch '^(j|ja|y|yes)$') { return }
+        if ($svar -notmatch '^(j|ja|y|yes)$') {
+            # Hold den planlagte opgave og genvejene i Start-menuen ajour med den nye version.
+            if (-not $env:AULA_AGENT_TEST) {
+                & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Dir "opsaet.ps1") -KunStartmenu
+            }
+            return
+        }
     }
     & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Dir "opsaet.ps1")
 }

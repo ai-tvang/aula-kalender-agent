@@ -4,6 +4,7 @@
 # Valgfrit: -Tid "07:00" -Dag Sunday -Daglig
 # -KunGenveje: opretter kun den planlagte opgave og genvejene for denne mappe
 #   (fx efter at agent-mappen er flyttet). Springer guiden og første kørsel over.
+# -KunStartmenu: opretter kun genvejene i Start-menuen (bruges ved opdatering). Rører ikke den planlagte opgave.
 # Installeres normalt med én linje (se README), som henter agenten og kører dette script.
 
 param(
@@ -12,7 +13,8 @@ param(
     [string]$Dag = "Sunday",
     [switch]$Daglig,
     [switch]$Pause,
-    [switch]$KunGenveje
+    [switch]$KunGenveje,
+    [switch]$KunStartmenu
 )
 
 $ErrorActionPreference = "Stop"
@@ -57,7 +59,7 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) { Stop-Med "uv kunne ikke installeres. Se https://docs.astral.sh/uv/ og kør scriptet igen." }
 Ok (uv --version)
 
-if (-not $KunGenveje) {
+if (-not ($KunGenveje -or $KunStartmenu)) {
 # 3. AI: Claude Code eller Codex (ChatGPT), hvis ingen af dem findes, og der ikke bruges API-nøgle
 function Find-Claude {
     $c = Get-Command claude -ErrorAction SilentlyContinue
@@ -209,6 +211,7 @@ if ($LASTEXITCODE -ne 0) { Stop-Med "Opsætningen blev ikke færdig. Kør script
 
 if (-not $Test) {
 # 6. Planlagt opgave
+if (-not $KunStartmenu) {
 Trin "Automatisk kørsel"
 $uvSti = (Get-Command uv).Source
 $settings = New-ScheduledTaskSettingsSet -WakeToRun -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 1)
@@ -222,6 +225,7 @@ if ($Daglig) {
     $t2 = New-ScheduledTaskTrigger -Daily -At "09:30"
     Register-ScheduledTask -TaskName "Aula-kalenderagent daglig" -Action $a2 -Trigger $t2 -Settings $settings -Force | Out-Null
     Ok "Daglig opgave oprettet"
+}
 }
 
 # 7. Genveje i Start-menuen, så terminalen ikke er nødvendig bagefter
@@ -240,12 +244,17 @@ try {
         $g.Description = $beskrivelse
         $g.Save()
     }
-    Ny-Genvej "Kør nu" $ps "-NoProfile -ExecutionPolicy Bypass -File `"$koer`" weekly" "Læs Aula og opdater kalenderen nu"
-    Ny-Genvej "Log ind på Aula igen" $ps "-NoProfile -ExecutionPolicy Bypass -File `"$koer`" login-aula weekly" "Nyt MitID-login, når Aula-login er udløbet"
-    Ny-Genvej "Log ind på Outlook igen" $ps "-NoProfile -ExecutionPolicy Bypass -File `"$koer`" login-outlook weekly" "Nyt Outlook-login"
-    Ny-Genvej "Opsætning" $ps "-NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $Dir 'opsaet.ps1')`" -Pause" "Kør opsætningen igen, fx efter nyt skoleår"
-    Ny-Genvej "Åbn agent-mappen" (Join-Path $env:SystemRoot "explorer.exe") "`"$Dir`"" "Indstillinger, regler og log"
-    Ok "Start-menuen > Aula-kalenderagent: Kør nu, Log ind på Aula igen, Opsætning m.fl."
+    # Navnene starter med "Aula-agent", så de kan findes ved søgning i Start-menuen.
+    # Genveje med de gamle navne (før 11. nov. 2026) fjernes.
+    foreach ($gammel in "Kør nu", "Log ind på Aula igen", "Log ind på Outlook igen", "Opsætning", "Åbn agent-mappen") {
+        Remove-Item -LiteralPath (Join-Path $menu "$gammel.lnk") -Force -ErrorAction SilentlyContinue
+    }
+    Ny-Genvej "Aula-agent kør nu" $ps "-NoProfile -ExecutionPolicy Bypass -File `"$koer`" weekly" "Læs Aula og opdater kalenderen nu"
+    Ny-Genvej "Aula-agent log ind på Aula igen" $ps "-NoProfile -ExecutionPolicy Bypass -File `"$koer`" login-aula weekly" "Nyt MitID-login, når Aula-login er udløbet"
+    Ny-Genvej "Aula-agent log ind på Outlook igen" $ps "-NoProfile -ExecutionPolicy Bypass -File `"$koer`" login-outlook weekly" "Nyt Outlook-login"
+    Ny-Genvej "Aula-agent opsætning" $ps "-NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $Dir 'opsaet.ps1')`" -Pause" "Kør opsætningen igen, fx efter nyt skoleår"
+    Ny-Genvej "Aula-agent åbn mappen" (Join-Path $env:SystemRoot "explorer.exe") "`"$Dir`"" "Indstillinger, regler og log"
+    Ok "Søg på Aula-agent i Start-menuen: Aula-agent kør nu, Aula-agent log ind på Aula igen, Aula-agent opsætning m.fl."
 } catch {
     Write-Host "  Genvejene kunne ikke oprettes ($($_.Exception.Message)). Agenten virker stadig." -ForegroundColor Yellow
 }
@@ -255,6 +264,8 @@ try {
 if ($KunGenveje) {
     Write-Host ""
     Write-Host "Opgaven og genvejene peger nu på $Dir." -ForegroundColor Green
+} elseif ($KunStartmenu) {
+    # Intet mere: kun genvejene skulle opdateres.
 } else {
 # 8. Første kørsel
 Trin "Første kørsel (læser de sidste 30 dage, tager 2-5 minutter)"
@@ -271,5 +282,5 @@ if ($Test -and $LASTEXITCODE -eq 0) {
     Write-Host "Opsætningen er færdig, men første kørsel gav en fejl. Se ugemailen eller logs\agent.log." -ForegroundColor Yellow
 }
 }
-if (-not $Test) { Write-Host "Senere finder du agenten i Start-menuen under 'Aula-kalenderagent'." }
+if (-not $Test) { Write-Host "Senere finder du agenten ved at søge på 'Aula-agent' i Start-menuen." }
 if ($Pause) { Read-Host "Tryk Enter for at lukke" | Out-Null }
