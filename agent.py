@@ -2308,7 +2308,7 @@ def run_codex(cfg: dict, prompt: str, run_dir: Path, images: list[str] | None = 
     exe = find_codex(cfg)
     if not exe:
         raise RuntimeError(
-            "Kan ikke finde Codex CLI ('codex'). Kør Opsætning fra Start-menuen, eller installer den med: "
+            "Kan ikke finde Codex CLI ('codex'). Kør 'Aula-agent opsætning' fra Start-menuen, eller installer den med: "
             "npm install -g @openai/codex"
         )
     version = codex_version(exe)
@@ -2316,7 +2316,7 @@ def run_codex(cfg: dict, prompt: str, run_dir: Path, images: list[str] | None = 
         found = ".".join(map(str, version)) if version else "ukendt version"
         raise RuntimeError(
             f"Codex CLI er for gammel eller kan ikke læses ({found}, kræver mindst "
-            f"{'.'.join(map(str, MIN_CODEX_VERSION))}). Kør Opsætning fra Start-menuen, "
+            f"{'.'.join(map(str, MIN_CODEX_VERSION))}). Kør 'Aula-agent opsætning' fra Start-menuen, "
             "eller opdater med: npm install -g @openai/codex@latest"
         )
     work = Path(tempfile.mkdtemp(prefix="aula-codex-"))
@@ -2344,7 +2344,7 @@ def run_codex(cfg: dict, prompt: str, run_dir: Path, images: list[str] | None = 
             if CODEX_SANDBOX_PATTERN.search(out):
                 raise CodexSandboxError(
                     "Codex kunne ikke starte sin sikre sandkasse, så kørslen blev stoppet for at beskytte dine "
-                    "filer. Kør Opsætning fra Start-menuen, og sig ja til at sætte sandkassen op (Windows beder "
+                    "filer. Kør 'Aula-agent opsætning' fra Start-menuen, og sig ja til at sætte sandkassen op (Windows beder "
                     "om administrator-godkendelse). Detaljer: " + out.strip()[-300:]
                 )
             raise RuntimeError(f"Codex fejlede ({res.returncode}): {out.strip()[-800:]}")
@@ -2658,7 +2658,7 @@ def install_cli(name: str, script_url: str, found) -> bool:
     return False
 
 
-API_HINT = "  Vil du hellere bruge en API-nøgle, så kør Opsætning fra Start-menuen igen og vælg api."
+API_HINT = "  Vil du hellere bruge en API-nøgle, så kør 'Aula-agent opsætning' fra Start-menuen igen og vælg api."
 
 
 def setup_ai(cfg: dict, force_api: bool = False, provider: str | None = None) -> None:
@@ -2986,7 +2986,7 @@ def cmd_daily(cfg: dict, state: dict, dry: bool) -> int:
         asyncio.run(aula_keep_alive(cfg))
     except AulaLoginRequired:
         notify_login(graph, cfg, state, "Aula kræver nyt MitID-login",
-                     "Åbn Start-menuen > Aula-kalenderagent > Log ind på Aula igen, og godkend i MitID-appen. "
+                     "Søg på 'Aula-agent' i Start-menuen, vælg 'Aula-agent log ind på Aula igen', og godkend i MitID-appen. "
                      f"Har du ikke genvejen: åbn PowerShell i agent-mappen og kør {RUN} login-aula")
     if not dry:
         state["last_daily"] = now_local().isoformat()
@@ -2994,7 +2994,7 @@ def cmd_daily(cfg: dict, state: dict, dry: bool) -> int:
 
 
 AULA_LOGIN_HOW = (
-    "Åbn Start-menuen > Aula-kalenderagent > Log ind på Aula igen, og godkend i MitID-appen. "
+    "Søg på 'Aula-agent' i Start-menuen, vælg 'Aula-agent log ind på Aula igen', og godkend i MitID-appen. "
     "Genvejen kører også agenten bagefter. "
     f"Har du ikke genvejen: åbn PowerShell i agent-mappen og kør {RUN} login-aula og derefter {RUN} weekly"
 )

@@ -161,7 +161,7 @@ try:
     agent.run_codex({"openai_model": "x"}, "p", rd); msg = ""
 except RuntimeError as e:
     msg = str(e)
-check("Codex: svag sandkasse stopper kørslen med vejledning", "Opsætning" in msg and "sandkasse" in msg)
+check("Codex: svag sandkasse stopper kørslen med vejledning", "Aula-agent opsætning" in msg and "sandkasse" in msg)
 CODEX_REPLIES = [(1, "", "windows sandbox failed: runner failed during SpawnChild: CreateProcessAsUserW failed")]
 try:
     agent.run_codex({"openai_model": "x"}, "p", rd); ok = False
