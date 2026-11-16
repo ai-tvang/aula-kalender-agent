@@ -47,6 +47,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
+import copy
 import getpass
 import hashlib
 import io
@@ -2368,11 +2369,7 @@ _names_state: dict = {"people": []}  # (navn, rolle) fra Aulas gruppelister. Bli
 NAME_LABELS = {"child": "Barn", "guardian": "Forælder", "employee": "Medarbejder"}
 NAME_MAX_GROUPS = 40
 # Fornavne, der også er almindelige ord. De skjules ikke som første ord i en sætning ("Hans mor kommer").
-NAME_ALSO_WORDS = {
-    "Hans", "Bo", "Liv", "Mark", "Sol", "Storm", "Vilje", "Saga", "Silke", "Maj", "Juni", "August", "Dag",
-    "Tor", "Ask", "Eg", "Bjørn", "Ulv", "Rose", "Sten", "Birk", "Lærke", "Vibe", "Svane", "Falk", "Ravn",
-    "Due", "Lilje", "Viol", "Else", "Line", "Bent", "Stig", "Rune", "Gry", "Fie", "Mie", "Asger", "Skjold",
-}
+NAME_ALSO_WORDS = {"Hans", "Bo", "Mark", "Sol", "Dag", "Storm", "Maj", "Juni", "August"}
 MASK_SKIP_KEYS = {"key", "image_file", "date", "end_date", "start", "end", "time", "today", "new_since",
                   "weekday_today", "from", "to", "type"}
 NAMES_HINT = (
@@ -2382,10 +2379,59 @@ NAMES_HINT = (
 )
 
 
+def _profile_name(p: dict) -> str:
+    name = p.get("fullName") or p.get("name") or p.get("fullname") or ""
+    if not name:
+        name = " ".join(x for x in (p.get("firstName"), p.get("lastName")) if x)
+    return str(name or "").strip()
+
+
+def parse_group_members(data) -> list[tuple[str, str]]:
+    """Navne og roller ud af Aulas svar fra groups.getMembershipsLight.
+
+    Aula leverer i dag én post pr. rolle (child, guardian, employee) med en liste 'institutionProfiles'
+    indeni. Ældre svar har én post pr. person med 'institutionProfileId' øverst. Begge former læses.
+    """
+    people: list[tuple[str, str]] = []
+    if not isinstance(data, list):
+        return people
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        outer_role = str(item.get("portalRole") or item.get("role") or "")
+        profiles = item.get("institutionProfiles")
+        if isinstance(profiles, list):
+            for p in profiles:
+                if isinstance(p, dict):
+                    name = _profile_name(p)
+                    if name:
+                        people.append((name, str(p.get("portalRole") or p.get("role") or outer_role)))
+        else:
+            name = _profile_name(item)
+            if name:
+                people.append((name, outer_role))
+    return people
+
+
+async def _group_members(client, group_id) -> list[tuple[str, str]]:
+    """Henter gruppens medlemmer direkte, for aula-biblioteket springer Aulas nuværende poster over."""
+    resp = await client._request_with_version_retry(
+        "get", client.api_url, params={"method": "groups.getMembershipsLight", "groupId": group_id})
+    resp.raise_for_status()
+    data = resp.json().get("data", [])
+    people = parse_group_members(data)
+    if not people and isinstance(data, list) and data:
+        # Kun nøglerne logges, aldrig navnene, så formen kan rettes, hvis Aula ændrer den igen.
+        shape = sorted({k for item in data if isinstance(item, dict) for k in item})
+        log.info("Gruppeliste med %d poster gav ingen navne. Felter: %s", len(data), ", ".join(shape))
+    return people
+
+
 async def fetch_people(client, prof) -> list[tuple[str, str]]:
     """Navne og roller fra de Aula-grupper, børnene er med i. Bruges kun lokalt til at skjule navne."""
     people: list[tuple[str, str]] = []
     seen: set = set()
+    failed = 0
     try:
         for c in prof.children:
             for g in await client.get_groups(child_institution_profile_ids=[c.id]):
@@ -2393,15 +2439,23 @@ async def fetch_people(client, prof) -> list[tuple[str, str]]:
                     continue
                 seen.add(g.id)
                 try:
-                    for m in await client.get_group_members(g.id):
-                        if m.name:
-                            people.append((m.name, m.portal_role or ""))
+                    people.extend(await _group_members(client, g.id))
                 except Exception as e:  # noqa: BLE001
+                    failed += 1
                     log.debug("Gruppelisten for %s kunne ikke hentes: %s", g.name, e)
     except Exception as e:  # noqa: BLE001
         log.warning("Navnelister kunne ikke hentes fra Aula, så kun afsendernavne skjules: %s", _short(e))
+        failed += 1
+    n_names = len({n for n, _ in people})
     log.info("Navne: %d navne fra %d Aula-grupper bruges til at skjule navne (bliver på computeren)",
-             len({n for n, _ in people}), len(seen))
+             n_names, len(seen))
+    # Uden navne fra grupperne skjules kun afsendere. Det skal stå i ugemailen, ellers lover README mere, end der sker.
+    _names_state["warning"] = None
+    if n_names == 0:
+        _names_state["warning"] = (
+            "Navneskjulning: Aula gav ingen navne fra gruppelisterne, så kun afsendere og forfattere er skjult. "
+            "Navne i beskedtekster er sendt til AI'en som de står." if seen or failed else
+            "Navneskjulning: der blev ikke fundet nogen Aula-grupper, så kun afsendere og forfattere er skjult.")
     return people
 
 
@@ -2427,6 +2481,7 @@ class NameMask:
         self.back: dict[str, str] = {}         # dæknavn -> tekst, der sættes tilbage
         self.shared: dict[str, str] = {}       # fornavn, flere deler -> fælles dæknavn
         self.counts: dict[str, int] = {}
+        self.keys: dict[str, str] = {}         # neutral reference -> eksisterende aftales key
         self._rx = None
         for name, role in people:
             self.add(name, role)
@@ -2474,6 +2529,24 @@ class NameMask:
             self.shared[first] = self._alias(labels.pop() if len(labels) == 1 else "Person", first)
         return self.shared[first]
 
+    @staticmethod
+    def _sentence_start(text: str, pos: int) -> bool:
+        before = text[max(0, pos - 200): pos].rstrip()
+        return (not before and pos <= 200) or before[-1:] in (".", "!", "?", ":")
+
+    def opaque_keys(self, payload: dict) -> None:
+        """Eksisterende aftalers key kan indeholde fornavne i sluggen. AI'en får en neutral reference i stedet."""
+        for i, ev in enumerate(payload.get("existing_events") or [], 1):
+            if isinstance(ev, dict) and ev.get("key"):
+                ref = f"aula:ref-{i}"
+                self.keys[ref] = ev["key"]
+                ev["key"] = ref
+
+    def restore_keys(self, result: dict) -> None:
+        for item in result.get("calendar") or []:
+            if isinstance(item, dict) and item.get("key") in self.keys:
+                item["key"] = self.keys[item["key"]]
+
     def mask_text(self, text: str) -> str:
         if not text or not self.by_first:
             return text
@@ -2485,8 +2558,6 @@ class NameMask:
             if m.start() < pos:
                 continue
             first = m.group(1)
-            if first in NAME_ALSO_WORDS and re.search(r"(^|[.!?:\n]\s*)$", text[max(0, m.start() - 3): m.start()]):
-                continue
             cands = self.by_first[first]
             end, used = m.end(), set()
             while True:  # Efternavne og mellemnavne lige efter fornavnet hører med til navnet.
@@ -2495,6 +2566,8 @@ class NameMask:
                     break
                 used.add(nxt.group(1).lower())
                 end += nxt.end()
+            if first in NAME_ALSO_WORDS and not used and self._sentence_start(text, m.start()):
+                continue  # "Hans mor kommer": ordet er ikke et navn, når der ikke følger et efternavn
             match = [p for p in cands if used <= p["rest"]] if used else cands
             alias = self._person_alias(match[0]) if len(match) == 1 else self._shared_alias(first)
             out.append(text[pos: m.start()] + alias)
@@ -2555,6 +2628,8 @@ def run_ai(cfg: dict, payload: dict, run_dir: Path) -> dict:
     if cfg.get("hide_names", True):
         names = NameMask(cfg, _names_state.get("people") or [])
         names.add_from_payload(payload)
+        payload = copy.deepcopy(payload)
+        names.opaque_keys(payload)
         payload = names.mask(payload)
     prompt = (
         f"{rules}\n{family_section(cfg)}\n{OUTPUT_SPEC}\n"
@@ -2593,6 +2668,8 @@ def run_ai(cfg: dict, payload: dict, run_dir: Path) -> dict:
         save_json(run_dir / "navne.json", names.back)
         log.info("Navne: %d dæknavne brugt i det, der blev sendt til %s", len(names.back), ai_name(cfg))
         result = names.restore(result)
+    if names:
+        names.restore_keys(result)
     return result
 
 
@@ -3295,6 +3372,8 @@ def cmd_weekly(cfg: dict, state: dict, dry: bool, days: int | None) -> int:
                 **data,
             }
             result = run_ai(cfg, payload, run_dir)
+            if cfg.get("hide_names", True) and _names_state.get("warning"):
+                errors.append(_names_state["warning"])
         except AiLoginRequired:
             log.warning("%s-login er udløbet eller API-nøglen er afvist", ai_name(cfg))
             errors.append(

@@ -270,6 +270,95 @@ check("Navne: sættes tilbage i svaret", back["title"] == "Hugos fødselsdag" an
 check("Navne: to med samme fornavn holdes adskilt", sorted(v for v in nm.back.values() if v.startswith("Emma")) == ["Emma", "Emma Lund"])
 check("Navne: uden navneliste ændres intet", agent.NameMask(ncfg, []).mask({"t": "Hugo kommer"}) == {"t": "Hugo kommer"})
 
+# 2h. Gruppelister i Aulas nuværende form (én post pr. rolle med institutionProfiles) og tavs fejl
+real_shape = [
+    {"portalRole": "child", "institutionProfiles": [{"id": 1, "fullName": "Hugo Jensen"}, {"id": 2, "fullName": "Liv Kjær"}]},
+    {"portalRole": "guardian", "institutionProfiles": [{"id": 3, "fullName": "Louise Holm Hansen"}]},
+    {"portalRole": "employee", "institutionProfiles": [{"id": 4, "fullName": "Mette Dam"}, {"id": 5, "name": ""}]},
+]
+pg = agent.parse_group_members(real_shape)
+check("Gruppeliste: nuværende form giver navne og roller",
+      pg == [("Hugo Jensen", "child"), ("Liv Kjær", "child"), ("Louise Holm Hansen", "guardian"), ("Mette Dam", "employee")])
+check("Gruppeliste: ældre form (én post pr. person) læses stadig",
+      agent.parse_group_members([{"institutionProfileId": 7, "fullName": "Emma Lund", "portalRole": "child"}]) == [("Emma Lund", "child")])
+check("Gruppeliste: for- og efternavn i hver sit felt", agent.parse_group_members(
+    [{"portalRole": "guardian", "institutionProfiles": [{"firstName": "Karen", "lastName": "Ny"}]}]) == [("Karen Ny", "guardian")])
+check("Gruppeliste: uventet indhold giver tom liste og ingen fejl",
+      agent.parse_group_members(None) == [] and agent.parse_group_members(["x", 3, {"a": 1}]) == [])
+
+
+class FakeResp:
+    def __init__(self, data): self._d = data
+    def raise_for_status(self): pass
+    def json(self): return {"data": self._d}
+
+
+class FakeAulaClient:
+    api_url = "https://aula/api"
+
+    def __init__(self, members, fail=()):
+        self.members, self.fail, self.calls = members, set(fail), []
+
+    async def get_groups(self, child_institution_profile_ids): return [type("G", (), {"id": 1, "name": "1B"})(),
+                                                                       type("G", (), {"id": 2, "name": "Nord"})()]
+
+    async def _request_with_version_retry(self, method, url, params=None):
+        self.calls.append(params)
+        if params["groupId"] in self.fail:
+            raise RuntimeError("fejl")
+        return FakeResp(self.members)
+
+
+fake_prof = type("P", (), {"children": [type("C", (), {"id": 11})()]})()
+fc = FakeAulaClient(real_shape)
+got = asyncio.run(agent.fetch_people(fc, fake_prof))
+check("fetch_people: henter direkte fra groups.getMembershipsLight", len(got) == 8 and all(c["method"] == "groups.getMembershipsLight" for c in fc.calls))
+check("fetch_people: ingen advarsel, når der hentes navne", agent._names_state["warning"] is None)
+got0 = asyncio.run(agent.fetch_people(FakeAulaClient([{"role": "x"}]), fake_prof))
+check("fetch_people: 0 navne giver en advarsel til ugemailen", got0 == [] and "ingen navne" in agent._names_state["warning"])
+gotf = asyncio.run(agent.fetch_people(FakeAulaClient(real_shape, fail=(1, 2)), fake_prof))
+check("fetch_people: alle grupper fejler giver også advarsel", gotf == [] and agent._names_state["warning"])
+agent._names_state["warning"] = None
+
+# Fornavne, der også er ord: kun "Hans" og de få andre springes over, og kun uden efternavn
+nm2 = agent.NameMask(ncfg, [("Liv Kjær", "child"), ("Hans Skov", "guardian"), ("Line Moe", "guardian"), ("Rune Bro", "child")])
+t2 = nm2.mask_text("Liv kommer. Line og Rune er med. Hans mor henter. Hans Skov henter også. Mark kommer.")
+check("Navne: almindelige fornavne som Liv, Line og Rune skjules også først i en sætning",
+      all(n not in t2 for n in ("Liv", "Line", "Rune", "Skov")))
+check("Navne: 'Hans mor' springes stadig over, men 'Hans Skov' skjules", "Hans mor henter" in t2 and t2.count("Hans") == 1)
+check("Navne: sætningsstart efter mellemrum og linjeskift virker ens", nm2._sentence_start("a.  ", 4) and nm2._sentence_start("a.\n", 3)
+      and not nm2._sentence_start("a og ", 5))
+
+# Eksisterende aftalers key (med fornavne i sluggen) sendes ikke til AI'en
+nm3 = agent.NameMask(ncfg, [("Hugo Jensen", "child")])
+kp = {"existing_events": [{"key": "aula:12:2030-12-05:hugos-foedselsdag", "subject": "Hugos fødselsdag"},
+                          {"key": None, "subject": "Møde"}], "posts": []}
+nm3.opaque_keys(kp)
+kp = nm3.mask(kp)
+check("Navne: key sendes som neutral reference", kp["existing_events"][0]["key"] == "aula:ref-1" and "hugo" not in json.dumps(kp, ensure_ascii=False).lower())
+res_k = {"calendar": [{"key": "aula:ref-1", "title": "x"}, {"key": "aula:99:ny", "title": "y"}]}
+nm3.restore_keys(res_k)
+check("Navne: key sættes tilbage, nye keys røres ikke", res_k["calendar"][0]["key"] == "aula:12:2030-12-05:hugos-foedselsdag"
+      and res_k["calendar"][1]["key"] == "aula:99:ny")
+
+# Hele vejen gennem run_ai: det, der sendes, er skjult; det, der kommer tilbage, er sat ind igen
+sent = {}
+def _fake_cc(c, prompt, d):
+    sent["prompt"] = prompt
+    return '```json\n{"calendar": [{"key": "aula:ref-1", "title": "Barn 1s fødselsdag", "date": "2030-12-05"}], "weekly_mail": [], "fri": [], "husk": []}\n```'
+orig_cc, orig_state = agent.run_claude_code, dict(agent._names_state)
+agent.run_claude_code = _fake_cc
+agent._names_state["people"] = [("Hugo Jensen", "child")]
+rd = work / "run_e2e"; rd.mkdir(exist_ok=True)
+e2e_cfg = {**cfg, "ai_mode": "claude-code", "hide_names": True}
+e2e = agent.run_ai(e2e_cfg, {"posts": [{"author": "Mette Dam", "text": "Hugo har fødselsdag", "date": "2030-11-01"}], "threads": [],
+                             "existing_events": [{"key": "aula:12:2030-12-05:hugos-foedselsdag", "subject": "Hugos fødselsdag"}]}, rd)
+agent.run_claude_code = orig_cc
+agent._names_state.clear(); agent._names_state.update(orig_state)
+check("run_ai: ingen af de andres navne i prompten", all(n not in sent["prompt"] for n in ("Hugo", "Mette", "Dam", "hugos-foedselsdag")))
+check("run_ai: titel og key sættes tilbage i svaret", e2e["calendar"][0]["title"] == "Hugos fødselsdag"
+      and e2e["calendar"][0]["key"] == "aula:12:2030-12-05:hugos-foedselsdag")
+
 # 3. weekly med husk, og med login-fejl i begge tilstande
 agent.sync_feeds = lambda *a: {"ny": 0}
 agent.sync_manual = lambda *a: None
@@ -298,6 +387,13 @@ subj, html = g.mails[-1]
 check("Weekly: rå data og widgets sendes ikke til Claude", all(k not in (seen_payload.get("week_plan") or {}) for k in ("raw", "widgets")))
 check("Weekly: fri fra skemaet, når Claude ikke giver fri", "<li>[Emma 2.a] Tur til skoven. Idræt (idrætstøj). Fri kl. 10.45.</li>" in g.mails[-1][1])
 check("Weekly: baggrund hentes fra 10 dage før skoleugen", fetch_args["ctx"] == datetime(2030, 11, 1, 0, 0, tzinfo=TZ))
+agent._names_state["warning"] = "Navneskjulning: test-advarsel om 0 navne."
+rc_w = agent.cmd_weekly(cfg, {"events": {}}, False, None)
+check("Weekly: advarsel om 0 hentede navne står i ugemailen", "test-advarsel om 0 navne" in g.mails[-1][1] and rc_w == 1)
+agent._names_state["warning"] = "Navneskjulning: skal ikke vises."
+rc_w2 = agent.cmd_weekly({**cfg, "hide_names": False}, {"events": {}}, False, None)
+check("Weekly: ingen navneadvarsel, når skjulning er slået fra", "Navneskjulning" not in g.mails[-1][1])
+agent._names_state["warning"] = None
 check("Weekly: vedhæftninger slettet efter kørslen", not any((d / "attachments").exists() for d in (work / "runs").iterdir() if d.is_dir() and d.name[:2] == "20"))
 html_today = agent.mail_html(cfg, [], [], {}, None, [{"date": "2030-11-10", "children": ["Emma"], "text": "Lektie til mandag: Læs side 12."}], None, [])
 check("Lektier: søndag vises som i dag", "Søndag 10/11 (i dag)" in html_today and "Lektie til mandag" in html_today)
