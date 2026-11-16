@@ -2693,9 +2693,43 @@ def lektie_weekday(text: str, d: str) -> str:
     return re.sub(r"(?i)\b(lektie(?:r)? til) i morgen", lambda m: f"{m.group(1)} {nxt}", text)
 
 
+def calendar_day_notes(cfg: dict, events: list[dict], start: date, end: date) -> dict[str, dict[str, list[tuple[str, str]]]]:
+    """Aftaler i Outlook-kalenderen pr. dag og barn (dato -> barn -> [(tekst, titel)]).
+
+    Kun aftaler med barnets mærke i titlen, fx "[Emma 2.a] Skole-hjem-samtale", tages med. De står i
+    ugemailen på dagen, uanset om opslaget om dem var nyt, så møder og samtaler ikke kan falde ud.
+    """
+    labels = {c["label"]: c["name"] for c in cfg["children"]}
+    found: dict[str, dict[str, set]] = {}
+    for e in events:
+        m = re.match(r"\s*\[([^\]]+)\]\s*(.*)$", e.get("subject") or "")
+        if not m or not m.group(2).strip():
+            continue
+        names = [labels[x.strip()] for x in m.group(1).split("+") if x.strip() in labels]
+        title = m.group(2).strip()
+        try:
+            s0 = datetime.fromisoformat(((e.get("start") or {}).get("dateTime") or "")[:19])
+            e0 = datetime.fromisoformat(((e.get("end") or {}).get("dateTime") or "")[:19])
+        except ValueError:
+            continue
+        if e.get("isAllDay"):
+            last = max(s0.date(), e0.date() - timedelta(days=1))  # slutdatoen på heldagsaftaler er udelukket
+            days = [s0.date() + timedelta(days=i) for i in range((last - s0.date()).days + 1)]
+            key, text = "00.00", title
+        else:
+            days = [s0.date()]
+            key, text = f"{s0:%H.%M}", f"kl. {s0:%H.%M} {title}"
+        for d in days:
+            if start <= d <= end:
+                for n in names:
+                    found.setdefault(d.isoformat(), {}).setdefault(n, set()).add((key, text, title))
+    return {d: {n: [(t, ti) for _, t, ti in sorted(v)] for n, v in per.items()} for d, per in found.items()}
+
+
 def mail_html(cfg: dict, changes: list[tuple[str, dict]], mail_items: list[dict], feed_stats: dict,
               errors: list[str] | None = None, husk: list[dict] | None = None,
-              plan_note: str | None = None, fri: list[dict] | None = None) -> str:
+              plan_note: str | None = None, fri: list[dict] | None = None,
+              cal: dict | None = None) -> str:
     parts = ["<div style='font-family:Segoe UI,Arial,sans-serif;font-size:14px'>"]
     if errors:
         parts.append(
@@ -2705,13 +2739,13 @@ def mail_html(cfg: dict, changes: list[tuple[str, dict]], mail_items: list[dict]
         for e in errors:
             parts.append(f"<li>{esc(e)}</li>")
         parts.append("</ul></div>")
-    if husk or fri:
+    if husk or fri or cal:
         parts.append("<h3>Husk i ugen</h3>")
         order = [c["name"] for c in cfg["children"]]
         days: dict[str, dict[str, dict]] = {}
 
         def slot(d: str, name: str) -> dict:
-            return days.setdefault(d, {}).setdefault(name, {"texts": [], "lektier": [], "fri": None})
+            return days.setdefault(d, {}).setdefault(name, {"texts": [], "lektier": [], "fri": None, "kal": []})
 
         for it in husk or []:
             for name in it.get("children") or []:
@@ -2731,6 +2765,11 @@ def mail_html(cfg: dict, changes: list[tuple[str, dict]], mail_items: list[dict]
         for it in fri or []:
             for name in it.get("children") or []:
                 slot(it.get("date", ""), name)["fri"] = it
+        for d, per_child in (cal or {}).items():
+            for name, notes in per_child.items():
+                sl = slot(d, name)
+                said = " ".join(sl["texts"] + sl["lektier"]).lower()
+                sl["kal"] = [t for t, title in notes if title.lower() not in said]
         for d in sorted(days):
             try:
                 dd = date.fromisoformat(d)
@@ -2760,6 +2799,9 @@ def mail_html(cfg: dict, changes: list[tuple[str, dict]], mail_items: list[dict]
                     line = (esc(line) + " " if line else "") + fri_txt
                 else:
                     line = esc(line)
+                for k in info["kal"]:
+                    k = k[0].upper() + k[1:]
+                    line += (" " if line else "") + f"<b>{esc(k)}.</b>"
                 for lk in info["lektier"]:
                     line += ("<br>" if line else "") + esc(lk)
                 parts.append(f"<li>{esc(child_prefix(cfg, [name]))}{line}</li>")
@@ -3426,7 +3468,13 @@ def cmd_weekly(cfg: dict, state: dict, dry: bool, days: int | None) -> int:
             plan_note = ((plan_note or "") + " Ugeplan: " + " ".join(week_plan["notes"])).strip()
     if not fri and has_plan:
         fri = fri_from_schema(week_plan)
-    html = mail_html(cfg, changes, mail_items, feed_stats, errors, husk, plan_note, fri)
+    cal_notes: dict = {}
+    try:  # Aftaler i kalenderen står på dagen, uanset om de er nye
+        today_d = now_local().date()
+        cal_notes = calendar_day_notes(cfg, graph.list_events(cal_id, today_d, friday + timedelta(days=1)), today_d, friday)
+    except Exception as e:  # noqa: BLE001
+        log.warning("Kalenderen kunne ikke læses til ugemailen: %s", _short(e))
+    html = mail_html(cfg, changes, mail_items, feed_stats, errors, husk, plan_note, fri, cal_notes)
     (run_dir / "ugemail.html").write_text(html, encoding="utf-8")
     if dry:
         log.info("[TØRKØRSEL] Ugemail gemt i %s (ikke sendt)", run_dir / "ugemail.html")

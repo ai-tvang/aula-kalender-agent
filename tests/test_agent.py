@@ -393,6 +393,43 @@ check("Weekly: advarsel om 0 hentede navne står i ugemailen", "test-advarsel om
 agent._names_state["warning"] = "Navneskjulning: skal ikke vises."
 rc_w2 = agent.cmd_weekly({**cfg, "hide_names": False}, {"events": {}}, False, None)
 check("Weekly: ingen navneadvarsel, når skjulning er slået fra", "Navneskjulning" not in g.mails[-1][1])
+
+# 3b. Aftaler fra kalenderen står på dagen i "Husk i ugen", uanset om de er nye
+def cev(subject, start, end=None, allday=False):
+    return {"id": "e" + subject[:6] + start, "subject": subject, "start": {"dateTime": start + ".0000000"}, "end": {"dateTime": (end or start) + ".0000000"},
+            "isAllDay": allday}
+evs = [cev("[Emma 2.a] Skole-hjem-samtale", "2030-11-12T14:20:00", "2030-11-12T14:40:00"),
+       cev("[Emma 2.a + Oscar 0.b] Forældremøde", "2030-11-13T19:00:00", "2030-11-13T20:30:00"),
+       cev("[Oscar 0.b] Temadag", "2030-11-14T00:00:00", "2030-11-16T00:00:00", allday=True),
+       cev("[Emma 2.a] Før vinduet", "2030-11-08T10:00:00", "2030-11-08T11:00:00"),
+       cev("[Emma 2.a] Efter ugen", "2030-11-20T10:00:00", "2030-11-20T11:00:00"),
+       cev("Uden mærke", "2030-11-12T10:00:00", "2030-11-12T11:00:00"),
+       cev("[Ukendt 9.z] Fremmed barn", "2030-11-12T10:00:00", "2030-11-12T11:00:00"),
+       cev("[Emma 2.a] Skole-hjem-samtale", "2030-11-12T14:20:00", "2030-11-12T14:40:00")]
+cn = agent.calendar_day_notes(cfg, evs, date(2030, 11, 10), date(2030, 11, 15))
+check("Kalender: tid og titel på dagen for det rigtige barn", cn["2030-11-12"]["Emma"] == [("kl. 14.20 Skole-hjem-samtale", "Skole-hjem-samtale")])
+check("Kalender: fælles mærke giver aftalen til begge børn", cn["2030-11-13"]["Emma"][0][0] == "kl. 19.00 Forældremøde" and cn["2030-11-13"]["Oscar"][0][0] == "kl. 19.00 Forældremøde")
+check("Kalender: heldagsaftale over flere dage kommer på hver dag i vinduet", cn["2030-11-14"]["Oscar"][0][0] == "Temadag" and cn["2030-11-15"]["Oscar"][0][0] == "Temadag" and "2030-11-16" not in cn)
+check("Kalender: aftaler uden for ugen, uden mærke eller for ukendt barn tages ikke med",
+      "2030-11-08" not in cn and "2030-11-20" not in cn and len(cn["2030-11-12"]) == 1)
+check("Kalender: dublet-aftale vises kun én gang", len(cn["2030-11-12"]["Emma"]) == 1)
+html_cal = agent.mail_html(cfg, [], [], {}, None, [], None, [], cn)
+check("Kalender: mailen viser aftalerne på dagen, også uden husk og fri",
+      "<b>Tirsdag 12/11</b>" in html_cal and "[Emma 2.a] <b>Kl. 14.20 Skole-hjem-samtale.</b>" in html_cal
+      and "<b>Kl. 19.00 Forældremøde.</b>" in html_cal and "[Oscar 0.b] <b>Temadag.</b>" in html_cal)
+html_dup = agent.mail_html(cfg, [], [], {}, None, [{"date": "2030-11-12", "children": ["Emma"], "text": "Skole-hjem-samtale kl. 14.20, husk skemaet."}], None, [], cn)
+check("Kalender: ikke dobbelt, når teksten allerede nævner aftalen", html_dup.count("Skole-hjem-samtale") == 1)
+check("Kalender: uden aftaler ændres mailen ikke", "Husk i ugen" not in agent.mail_html(cfg, [], [], {}, None, [], None, [], {}))
+g.list_events = lambda *a: evs
+agent._names_state["warning"] = None
+rc_c = agent.cmd_weekly(cfg, {"events": {}}, False, None)
+check("Weekly: kalenderens aftaler står på dagen i den sendte mail", "Kl. 14.20 Skole-hjem-samtale." in g.mails[-1][1] and "Tirsdag 12/11" in g.mails[-1][1])
+def _bad_list(*a): raise RuntimeError("Graph nede")
+g.list_events = _bad_list
+n_mails = len(g.mails)
+agent.cmd_weekly(cfg, {"events": {}}, False, None)
+check("Weekly: kalenderen kan ikke læses giver stadig en ugemail", len(g.mails) == n_mails + 1)
+g.list_events = lambda *a: []
 agent._names_state["warning"] = None
 check("Weekly: vedhæftninger slettet efter kørslen", not any((d / "attachments").exists() for d in (work / "runs").iterdir() if d.is_dir() and d.name[:2] == "20"))
 html_today = agent.mail_html(cfg, [], [], {}, None, [{"date": "2030-11-10", "children": ["Emma"], "text": "Lektie til mandag: Læs side 12."}], None, [])
