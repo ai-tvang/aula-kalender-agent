@@ -31,7 +31,7 @@ Hver uge (som standard søndag kl. 7):
 2. Lader AI'en (Claude eller ChatGPT) læse dem efter reglerne i `regler.md` og finde de bekræftede datoer.
 3. Henter dine kalender-links (fx Aula-kalenderen eller sportsklubben) og fletter dem ind.
 4. Opretter eller opdaterer aftaler i en separat Outlook-kalender, som standard "Skole og fritid". Den laver ikke dubletter, og flyttede datoer bliver rettet.
-5. Henter skemaet, ugeplanerne og Huskelisten for den kommende skoleuge (MinUddannelse, Meebook eller EasyIQ, alt efter hvad skolen bruger) og laver en "Husk i ugen"-liste pr. dag og barn: ture, idræt og svømning, ting der skal med (fx en opladet computer), lektier, og hvornår barnet har fri. Aftaler fra din kalender (møder, skole-hjem-samtaler) står også på dagen med klokkeslæt, uanset om opslaget om dem var nyt.
+5. Henter skemaet, ugeplanerne og Huskelisten for den kommende skoleuge (MinUddannelse, Meebook eller EasyIQ, alt efter hvad skolen bruger) og laver en "Husk i ugen"-liste pr. dag og barn: ture, idræt og svømning, ting der skal med (fx en opladet computer), lektier, og hvornår barnet har fri. Aftaler fra din kalender (møder, skole-hjem-samtaler) står også på dagen med klokkeslæt (lørdag og søndag med), uanset om opslaget om dem var nyt.
 6. Sender dig en ugemail med huskelisten øverst. Går noget galt (fx et udløbet login), står fejlen øverst i mailen med en sådan-gør-du-vejledning, og emnet får "(fejl, handling krævet)".
 
 **Med i kalenderen:** skolebegivenheder hvor forældre er inviteret, kontaktforældremøder og -arrangementer, bekræftede fødselsdage og legeaftaler (med svarfrist), pligter med dato (gaveliste, rengøring), ferie og fridage fra Aula-kalenderen.

@@ -3469,9 +3469,9 @@ def cmd_weekly(cfg: dict, state: dict, dry: bool, days: int | None) -> int:
     if not fri and has_plan:
         fri = fri_from_schema(week_plan)
     cal_notes: dict = {}
-    try:  # Aftaler i kalenderen står på dagen, uanset om de er nye
+    try:  # Aftaler i kalenderen står på dagen (også lørdag og søndag), uanset om de er nye
         today_d = now_local().date()
-        cal_notes = calendar_day_notes(cfg, graph.list_events(cal_id, today_d, friday + timedelta(days=1)), today_d, friday)
+        cal_notes = calendar_day_notes(cfg, graph.list_events(cal_id, today_d, friday + timedelta(days=3)), today_d, friday + timedelta(days=2))
     except Exception as e:  # noqa: BLE001
         log.warning("Kalenderen kunne ikke læses til ugemailen: %s", _short(e))
     html = mail_html(cfg, changes, mail_items, feed_stats, errors, husk, plan_note, fri, cal_notes)

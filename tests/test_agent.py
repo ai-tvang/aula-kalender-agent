@@ -420,10 +420,13 @@ check("Kalender: mailen viser aftalerne på dagen, også uden husk og fri",
 html_dup = agent.mail_html(cfg, [], [], {}, None, [{"date": "2030-11-12", "children": ["Emma"], "text": "Skole-hjem-samtale kl. 14.20, husk skemaet."}], None, [], cn)
 check("Kalender: ikke dobbelt, når teksten allerede nævner aftalen", html_dup.count("Skole-hjem-samtale") == 1)
 check("Kalender: uden aftaler ændres mailen ikke", "Husk i ugen" not in agent.mail_html(cfg, [], [], {}, None, [], None, [], {}))
+evs.append(cev("[Oscar 0.b] Fødselsdag hos Mille", "2030-11-16T13:00:00", "2030-11-16T16:00:00"))
+evs.append(cev("[Emma 2.a] Efter weekenden", "2030-11-18T13:00:00", "2030-11-18T16:00:00"))
 g.list_events = lambda *a: evs
 agent._names_state["warning"] = None
 rc_c = agent.cmd_weekly(cfg, {"events": {}}, False, None)
 check("Weekly: kalenderens aftaler står på dagen i den sendte mail", "Kl. 14.20 Skole-hjem-samtale." in g.mails[-1][1] and "Tirsdag 12/11" in g.mails[-1][1])
+check("Weekly: weekendens aftaler kommer med, dagen efter weekenden gør ikke", "Kl. 13.00 Fødselsdag hos Mille." in g.mails[-1][1] and "Efter weekenden" not in g.mails[-1][1])
 def _bad_list(*a): raise RuntimeError("Graph nede")
 g.list_events = _bad_list
 n_mails = len(g.mails)
