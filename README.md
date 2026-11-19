@@ -58,7 +58,7 @@ Hver uge (som standard søndag kl. 7):
    ```
    irm https://raw.githubusercontent.com/ai-tvang/aula-kalender-agent/main/install.ps1 | iex
    ```
-3. Følg vinduet. Det tager 10-15 minutter, og det meste er login. Hav din telefon med MitID-appen klar, og log gerne ind på claude.ai eller chatgpt.com i browseren først:
+3. Følg vinduet. Selve opsætningen tog ca. 7 minutter i vores test, inklusive MitID, Outlook-login og første kørsel. Skal Python og Claude Code eller Codex installeres først, kommer det oveni. Hav din telefon med MitID-appen klar, og log gerne ind på claude.ai eller chatgpt.com i browseren først:
    1. **Python og uv** installeres automatisk.
    2. **AI:** Du vælger Claude, ChatGPT eller API-nøgle. Med Claude installeres **Claude Code**; du logger ind i browseren og skriver `/exit`, når den er klar. Med ChatGPT installeres **Codex**; du logger ind med din ChatGPT-konto i browseren. På nyere Windows 11 bruger Codex Windows' indbyggede sandkasse (MXC) uden videre. På ældre Windows beder Windows én gang om administrator-godkendelse til Codex' sandkasse. Har du allerede Claude Code eller Codex, bruges det, men du bliver stadig spurgt, så du selv vælger.
    3. **MitID-brugernavn**, og godkendelse i MitID-appen. Agenten henter selv dine børn, deres skole, klasse og Aula-grupper, dit navn og om du er kontaktforælder.
