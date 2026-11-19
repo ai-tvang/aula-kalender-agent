@@ -329,6 +329,21 @@ check("Navne: 'Hans mor' springes stadig over, men 'Hans Skov' skjules", "Hans m
 check("Navne: sætningsstart efter mellemrum og linjeskift virker ens", nm2._sentence_start("a.  ", 4) and nm2._sentence_start("a.\n", 3)
       and not nm2._sentence_start("a og ", 5))
 
+# Efternavne: også når hele navnet ikke står på listerne, og når efternavnet står alene
+nm4 = agent.NameMask(ncfg, [("Simon Hansen", "child"), ("Anne Jensen", "guardian"), ("Anne Skov", "guardian"),
+                            ("Ida Hansen", "guardian"), ("Mette Kirk", "employee"), ("Rasmus Vang", "child")])
+src4 = ("Anne Hansen henter Simon. Dansk med Kirk. Fru Jensen kommer, og Hansens bil holder ude. "
+        "Skov og strand i morgen. Vi ses hos Skov. Familien Vang kommer. Ida Marie Hansen ringer.")
+t4 = nm4.mask_text(src4)
+check("Efternavne: fornavn + kendt efternavn skjules, selvom hele navnet ikke står på listerne",
+      "Anne Hansen" not in t4 and t4.startswith("Person "))
+check("Efternavne: alene skjules (efter 'med', 'Fru' og i ejefald)", all(n not in t4 for n in ("Kirk", "Jensen", "Hansen")))
+check("Efternavne: rollen følger efternavnet, når den er entydig", re.search(r"med Medarbejder \d+\.", t4) is not None)
+check("Efternavne: ord som 'Skov' først i en sætning skjules ikke, men gør midt i en sætning",
+      "Skov og strand" in t4 and "hos Skov" not in t4)
+check("Efternavne: familiens efternavn skjules ikke", "Familien Vang kommer" in t4)
+check("Efternavne: alt sættes tilbage, som det stod", nm4.restore({"t": t4})["t"] == src4)
+
 # Eksisterende aftalers key (med fornavne i sluggen) sendes ikke til AI'en
 nm3 = agent.NameMask(ncfg, [("Hugo Jensen", "child")])
 kp = {"existing_events": [{"key": "aula:12:2030-12-05:hugos-foedselsdag", "subject": "Hugos fødselsdag"},
