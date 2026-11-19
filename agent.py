@@ -2370,6 +2370,11 @@ NAME_LABELS = {"child": "Barn", "guardian": "Forælder", "employee": "Medarbejde
 NAME_MAX_GROUPS = 40
 # Fornavne, der også er almindelige ord. De skjules ikke som første ord i en sætning ("Hans mor kommer").
 NAME_ALSO_WORDS = {"Hans", "Bo", "Mark", "Sol", "Dag", "Storm", "Maj", "Juni", "August"}
+# Efternavne, der også er almindelige ord. Står de alene først i en sætning, er de nok et ord og skjules ikke.
+SURNAME_ALSO_WORDS = {"Holm", "Skov", "Lund", "Dam", "Bak", "Strand", "Berg", "Bach", "Krog", "Vinter", "Sommer",
+                      "Høj", "Bjerg", "Kirk", "Bager", "Smed", "Bonde", "Fisker", "Ravn", "Due", "Kok", "Have",
+                      "Gade", "Bro", "Borg", "Sand", "Ring", "Eng", "Mose", "Ny", "Mølle", "Hald", "Ager"}
+ALIAS_WORDS = {"Barn", "Forælder", "Medarbejder", "Person"}
 MASK_SKIP_KEYS = {"key", "image_file", "date", "end_date", "start", "end", "time", "today", "new_since",
                   "weekday_today", "from", "to", "type"}
 NAMES_HINT = (
@@ -2467,9 +2472,11 @@ def _name_tokens(name: str) -> list[str]:
 class NameMask:
     """Erstatter navne på andre end familien med dæknavne og sætter dem tilbage i AI'ens svar.
 
-    Fornavne (og efternavne lige efter et fornavn) fra Aulas gruppelister og fra afsendere skjules.
-    Forælderens og egne børns navne skjules ikke; dem skal AI'en bruge. Navne, der ikke står på
-    nogen liste, og efternavne, der står alene, slipper igennem.
+    Fornavne fra Aulas gruppelister og fra afsendere skjules, og det samme gør kendte efternavne og
+    mellemnavne, der står lige efter et fornavn, også når hele navnet ikke står på listerne (fx en søskende).
+    Kendte efternavne, der står alene, skjules også ("Dansk med Hansen"), undtagen efternavne, der også
+    er almindelige ord, først i en sætning. Forælderens og egne børns navne skjules ikke; dem skal AI'en
+    bruge. Navne, hvor hverken fornavn eller efternavn står på nogen liste, slipper igennem.
     """
 
     def __init__(self, cfg: dict, people: list[tuple[str, str]]):
@@ -2482,7 +2489,11 @@ class NameMask:
         self.shared: dict[str, str] = {}       # fornavn, flere deler -> fælles dæknavn
         self.counts: dict[str, int] = {}
         self.keys: dict[str, str] = {}         # neutral reference -> eksisterende aftales key
+        self.sur_labels: dict[str, set] = {}   # efternavn/mellemnavn fra listerne -> roller
+        self.combo: dict[str, str] = {}        # navn, der ikke står samlet på listerne -> dæknavn
+        self.sur_alias: dict[str, str] = {}    # efternavn alene -> dæknavn
         self._rx = None
+        self._srx = None
         for name, role in people:
             self.add(name, role)
 
@@ -2505,7 +2516,11 @@ class NameMask:
         person = {"tokens": tokens, "rest": {t.lower() for t in tokens[1:]}, "label": label, "alias": None}
         self.persons[key] = person
         self.by_first.setdefault(tokens[0], []).append(person)
+        for t in tokens[1:]:
+            if t.lower() not in self.keep and t not in ALIAS_WORDS:
+                self.sur_labels.setdefault(t, set()).add(label)
         self._rx = None
+        self._srx = None
 
     def add_from_payload(self, payload: dict) -> None:
         """Afsendere og forfattere, der ikke stod på gruppelisterne."""
@@ -2522,6 +2537,18 @@ class NameMask:
             alone = len(self.by_first[first]) == 1
             person["alias"] = self._alias(person["label"], first if alone else " ".join(person["tokens"]))
         return person["alias"]
+
+    def _combo_alias(self, span: str) -> str:
+        """Et fornavn og efternavn, der hver for sig står på listerne, men ikke som én person."""
+        if span not in self.combo:
+            self.combo[span] = self._alias("Person", span)
+        return self.combo[span]
+
+    def _surname_alias(self, word: str) -> str:
+        if word not in self.sur_alias:
+            labels = self.sur_labels[word]
+            self.sur_alias[word] = self._alias(next(iter(labels)) if len(labels) == 1 else "Person", word)
+        return self.sur_alias[word]
 
     def _shared_alias(self, first: str) -> str:
         if first not in self.shared:
@@ -2559,19 +2586,46 @@ class NameMask:
                 continue
             first = m.group(1)
             cands = self.by_first[first]
-            end, used = m.end(), set()
+            end, used, other = m.end(), set(), False
             while True:  # Efternavne og mellemnavne lige efter fornavnet hører med til navnet.
                 nxt = re.match(r"[ \t]+([A-ZÆØÅ][\w\-]*)", text[end:])
-                if not nxt or not any(nxt.group(1).lower() in p["rest"] for p in cands):
+                if not nxt:
                     break
-                used.add(nxt.group(1).lower())
+                word = nxt.group(1)
+                if not other and any(word.lower() in p["rest"] for p in cands):
+                    used.add(word.lower())
+                elif word in self.sur_labels:
+                    other = True  # Kendt efternavn, men ikke på en person med dette fornavn (fx en søskende)
+                else:
+                    break
                 end += nxt.end()
-            if first in NAME_ALSO_WORDS and not used and self._sentence_start(text, m.start()):
+            if first in NAME_ALSO_WORDS and not used and not other and self._sentence_start(text, m.start()):
                 continue  # "Hans mor kommer": ordet er ikke et navn, når der ikke følger et efternavn
-            match = [p for p in cands if used <= p["rest"]] if used else cands
-            alias = self._person_alias(match[0]) if len(match) == 1 else self._shared_alias(first)
+            if other:
+                alias = self._combo_alias(text[m.start(): end])
+            else:
+                match = [p for p in cands if used <= p["rest"]] if used else cands
+                alias = self._person_alias(match[0]) if len(match) == 1 else self._shared_alias(first)
             out.append(text[pos: m.start()] + alias)
             pos = end
+        out.append(text[pos:])
+        return self._mask_surnames("".join(out))
+
+    def _mask_surnames(self, text: str) -> str:
+        """Kendte efternavne, der står alene, fx "Dansk med Hansen" eller "Fru Hansen"."""
+        words = [w for w in self.sur_labels if w not in self.by_first]
+        if not text or not words:
+            return text
+        if self._srx is None:
+            words.sort(key=len, reverse=True)
+            self._srx = re.compile(r"(?<![\w\-])(" + "|".join(re.escape(w) for w in words) + r")(?=(?:s|'s|’s)?(?![\w]))")
+        out, pos = [], 0
+        for m in self._srx.finditer(text):
+            word = m.group(1)
+            if word in SURNAME_ALSO_WORDS and self._sentence_start(text, m.start()):
+                continue
+            out.append(text[pos: m.start()] + self._surname_alias(word))
+            pos = m.end()
         out.append(text[pos:])
         return "".join(out)
 
