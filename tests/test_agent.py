@@ -590,5 +590,75 @@ g = G(); real.connect_graph = lambda c, s: g
 real.cmd_weekly(dict(cfg_cc, ugeplan=False), {"events": {}}, False, None)
 check("ugeplan=false: ugeplan og baggrund hentes ikke", seen["w"] is None and seen["x"] is None and "Husk i ugen" not in g.mails[-1][1])
 
+# 4. Indhentning af ugens kørsel (--indhent) og lås, så to kørsler ikke kører samtidig
+A = importlib.reload(agent)
+d = lambda *x: datetime(*x, tzinfo=TZ)
+# 22. nov. 2026 er en søndag
+check("indhent: søndag kl. 12 -> samme søndag 07:00", A.last_scheduled("Sunday", "07:00", d(2026, 11, 22, 12, 0)) == d(2026, 11, 22, 7, 0))
+check("indhent: mandag -> søndagen før", A.last_scheduled("Sunday", "07:00", d(2026, 11, 23, 11, 59)) == d(2026, 11, 22, 7, 0))
+check("indhent: lørdag -> søndagen ugen før", A.last_scheduled("Sunday", "07:00", d(2026, 11, 21, 22, 0)) == d(2026, 11, 15, 7, 0))
+check("indhent: lige før tiden tæller som i dag", A.last_scheduled("søndag", "07:00", d(2026, 11, 22, 6, 55)) == d(2026, 11, 22, 7, 0))
+check("indhent: søndag 06:00 -> søndagen før", A.last_scheduled("Sunday", "07:00", d(2026, 11, 22, 6, 0)) == d(2026, 11, 15, 7, 0))
+mon = d(2026, 11, 23, 12, 0)
+check("indhent: kørt mandagen før -> mangler", A.weekly_due({"last_weekly": d(2026, 11, 16, 10, 49).isoformat()}, "Sunday", "07:00", mon))
+check("indhent: kørt søndag 07:01 -> mangler ikke", not A.weekly_due({"last_weekly": d(2026, 11, 22, 7, 1).isoformat()}, "Sunday", "07:00", mon))
+check("indhent: kørt med fejl og mail -> mangler ikke", not A.weekly_due({"last_weekly": d(2026, 11, 1, 7, 0).isoformat(), "last_weekly_try": d(2026, 11, 22, 9, 0).isoformat()}, "Sunday", "07:00", mon))
+check("indhent: aldrig kørt -> mangler", A.weekly_due({}, "Sunday", "07:00", mon))
+check("indhent: kørt 06:56 ved oplåsning -> opgaven 07:00 kører ikke igen",
+      not A.weekly_due({"last_weekly": d(2026, 11, 22, 6, 58).isoformat()}, "Sunday", "07:00", d(2026, 11, 22, 7, 0)))
+check("indhent: lørdag aften i hånden -> søndag kører stadig",
+      A.weekly_due({"last_weekly": d(2026, 11, 21, 22, 0).isoformat()}, "Sunday", "07:00", d(2026, 11, 22, 7, 0)))
+
+lockp = work / "test.lock"
+l1 = A.acquire_run_lock(lockp)
+l2 = A.acquire_run_lock(lockp)
+check("lås: anden kørsel får ikke låsen", l1 is not None and l2 is None)
+l1.close()
+l3 = A.acquire_run_lock(lockp)
+check("lås: frigives, når første kørsel slutter", l3 is not None)
+l3.close()
+
+# Hele vejen gennem main(): springes stille over, når ugen er kørt; kører, når den mangler
+calls = []
+A.cmd_weekly = lambda c, s, dry, days: (calls.append(dry), s.__setitem__("last_weekly", A.now_local().isoformat()), 0)[-1]
+A.now_local = lambda: d(2026, 11, 23, 12, 0)
+A.LOCK_FILE = work / "agent.lock"
+A.save_json(A.STATE_FILE, {"events": {}, "last_weekly": d(2026, 11, 22, 7, 2).isoformat()})
+sys.argv = ["agent.py", "weekly", "--indhent", "Sunday", "07:00"]
+rc = A.main()
+check("main --indhent: ugen er kørt -> stille, rc 0, ingen kørsel", rc == 0 and calls == [])
+A.save_json(A.STATE_FILE, {"events": {}, "last_weekly": d(2026, 11, 16, 10, 49).isoformat()})
+rc = A.main()
+st = json.loads(A.STATE_FILE.read_text(encoding="utf-8"))
+check("main --indhent: søndag mangler -> kører og gemmer", rc == 0 and calls == [False] and st["last_weekly"].startswith("2026-11-23"))
+rc = A.main()
+check("main --indhent: anden oplåsning samme dag -> kører ikke igen", calls == [False])
+held = A.acquire_run_lock(A.LOCK_FILE)
+A.save_json(A.STATE_FILE, {"events": {}})
+rc = A.main()
+check("main --indhent: anden kørsel i gang -> stille, rc 0", rc == 0 and calls == [False])
+sys.argv = ["agent.py", "weekly"]
+rc = A.main()
+st = json.loads(A.STATE_FILE.read_text(encoding="utf-8"))
+check("main weekly i hånden: anden kørsel i gang -> rc 1 og state urørt", rc == 1 and calls == [False] and st == {"events": {}})
+held.close()
+rc = A.main()
+check("main weekly uden --indhent kører altid", rc == 0 and calls == [False, False])
+sys.argv = ["agent.py", "weekly", "--indhent", "Søndagx", "07:00"]
+check("main --indhent: ugyldig dag -> rc 1", A.main() == 1 and calls == [False, False])
+
+# Fejl i weekly, som sender fejlmail, tæller som ugens forsøg (ingen ny mail ved hver oplåsning)
+g4 = G()
+def boom(*a): raise RuntimeError("bum")
+A.cmd_weekly = boom
+A.Graph = lambda c: g4
+A.save_json(A.STATE_FILE, {"events": {}})
+sys.argv = ["agent.py", "weekly", "--indhent", "Sunday", "07:00"]
+rc = A.main()
+st = json.loads(A.STATE_FILE.read_text(encoding="utf-8"))
+check("main: fejl -> fejlmail og last_weekly_try", rc == 1 and len(g4.mails) == 1 and "last_weekly_try" in st)
+rc = A.main()
+check("main: næste oplåsning efter fejl -> ingen ny mail", rc == 0 and len(g4.mails) == 1)
+
 print("\n" + ("Alle tests bestået" if not fails else f"{fails} fejl"))
 sys.exit(1 if fails else 0)

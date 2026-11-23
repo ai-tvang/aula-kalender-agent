@@ -49,7 +49,7 @@ Hver uge (som standard søndag kl. 7):
   - **OpenAI API-nøgle** fra [platform.openai.com](https://platform.openai.com/api-keys). Du betaler pr. kørsel. Et ChatGPT-abonnement giver ikke API-adgang; den betales for sig. Kræver betalingskort og lidt kredit.
 - **Dit login til Claude eller ChatGPT** (e-mail og adgangskode eller Google/Apple-login). Installationen åbner browseren og beder dig logge ind. Er du allerede logget ind på claude.ai eller chatgpt.com i browseren, går det hurtigere.
 - **MitID-appen** og adgang til Aula som forælder.
-- En computer, der **kører agenten om søndagen**. Er den i dvale, vækkes den (kræver, at vækningstimere er slået til i strømindstillingerne; på mange bærbare kun, når de er sat til strøm). Er den slukket, kører agenten, så snart du tænder den, og mailen kommer få minutter efter.
+- En computer, der **kører agenten om søndagen**. Sover eller er den slukket kl. 7, kører agenten, første gang du logger på eller låser skærmen op bagefter, og mailen kommer få minutter efter. Mange nyere bærbare (Modern Standby) bliver ikke vækket af planlagte opgaver, og Windows indhenter dem ikke selv; derfor starter opgaven også ved logon og oplåsning og kører kun, hvis ugens kørsel mangler.
 
 ## Installation
 
@@ -120,7 +120,7 @@ Du kan indsætte linket til denne side i Claude eller ChatGPT og skrive fx "Hjæ
 | Outlook-login: kode og microsoft.com/link | Åbn microsoft.com/link i browseren, skriv koden, log ind med din personlige Outlook-konto og godkend. Vinduet fortsætter selv. |
 | Outlook-login afvises, eller du bliver bedt om en administrator | Det er sandsynligvis en arbejds- eller skolekonto. Brug en personlig konto, fx en ny gratis @outlook.com. |
 | Opsætningen stoppede halvvejs | Kør linjen eller **Aula-agent opsætning** igen. Det, der allerede er gemt (fx MitID og Outlook), genbruges. |
-| Ingen ugemail søndag | Computeren var slukket eller i dvale. Agenten kører, når den tændes. Ellers se `logs\agent.log` via **Aula-agent åbn mappen**. |
+| Ingen ugemail søndag | Computeren var slukket eller sov. Agenten kører, første gang du logger på eller låser op. Kommer mailen ikke da, så se `logs\agent.log` via **Aula-agent åbn mappen**. Installeret før 23. nov. 2026: kør installationslinjen igen (svar N), så opgaven får de nye udløsere. |
 
 Står din fejl ikke her, så opret et [issue](../../issues) med teksten fra vinduet (uden navne).
 

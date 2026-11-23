@@ -137,6 +137,62 @@ def now_local() -> datetime:
     return datetime.now(TZ)
 
 
+# Lås og indhentning ------------------------------------------------------- #
+LOCK_FILE = BASE / "agent.lock"
+SCHEDULE_DAYS = {
+    "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6,
+    "mandag": 0, "tirsdag": 1, "onsdag": 2, "torsdag": 3, "fredag": 4, "lørdag": 5, "søndag": 6,
+}
+# Margin omkring det planlagte tidspunkt: en kørsel lidt før tiden (fx ved oplåsning kl. 6.56)
+# tæller som ugens kørsel, så opgaven kl. 7.00 ikke kører igen.
+CATCH_UP_MARGIN = timedelta(minutes=10)
+
+
+def acquire_run_lock(path: Path = LOCK_FILE):
+    """Sørger for, at kun én kørsel ad gangen bruger mappen (login, state.json og runs).
+    Returnerer et åbent filhåndtag, som holder låsen, til processen slutter, eller None,
+    hvis en anden kørsel er i gang. Styresystemet frigiver låsen, også hvis processen dør."""
+    fh = open(path, "a+b")
+    try:
+        if os.name == "nt":
+            import msvcrt
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        fh.close()
+        return None
+    return fh
+
+
+def last_scheduled(day: str, at: str, now: datetime) -> datetime:
+    """Seneste planlagte tidspunkt (fx søndag 07:00) til og med nu."""
+    wd = SCHEDULE_DAYS[day.strip().lower()]
+    h, m = (int(x) for x in at.strip().split(":"))
+    d = now.date() - timedelta(days=(now.weekday() - wd) % 7)
+    t = datetime.combine(d, time(h, m), TZ)
+    if t > now + CATCH_UP_MARGIN:
+        t -= timedelta(days=7)
+    return t
+
+
+def weekly_due(state: dict, day: str, at: str, now: datetime | None = None) -> bool:
+    """Sand, hvis der ikke har været en ugentlig kørsel siden seneste planlagte tidspunkt.
+    Både vellykkede kørsler (last_weekly) og kørsler med fejl, der har sendt ugemail
+    (last_weekly_try), tæller, så en fejl ikke giver en ny mail ved hver oplåsning."""
+    now = now or now_local()
+    due_from = last_scheduled(day, at, now) - CATCH_UP_MARGIN
+    for field in ("last_weekly", "last_weekly_try"):
+        try:
+            if state.get(field) and datetime.fromisoformat(state[field]) >= due_from:
+                return False
+        except ValueError:
+            continue
+    return True
+
+
 def html_to_text(html: str | None) -> str:
     if not html:
         return ""
@@ -1413,7 +1469,10 @@ def ocr_images(paths: list[Path]) -> dict[Path, str] | None:
         return None
     finally:
         for t in temp:
-            t.unlink(missing_ok=True)
+            try:
+                t.unlink(missing_ok=True)
+            except OSError as e:  # fx en anden proces har filen åben; runs-mappen ryddes senere
+                log.warning("Kunne ikke slette midlertidig fil %s: %s", t.name, _short(e))
     if not data.get("engine"):
         log.warning("Windows har ingen tekstgenkendelse (OCR) installeret, så billeder læses ikke.")
         _ocr_state["unavailable"] = True
@@ -1493,7 +1552,10 @@ def handle_attachments(atts, att_dir: Path, client: httpx.Client, text: str = ""
             texts = ocr_images([p for _, p in to_read])
         finally:
             for _, p in to_read:  # Billedet har gjort sit; kun teksten går videre.
-                p.unlink(missing_ok=True)
+                try:
+                    p.unlink(missing_ok=True)
+                except OSError as e:
+                    log.warning("Kunne ikke slette billedet %s: %s", p.name, _short(e))
         if texts is None:
             # Tekstgenkendelsen virker ikke her. Sig det til AI'en og (via ocr_problem) til forælderen.
             _ocr_state["unread"] = _ocr_state.get("unread", 0) + len(to_read)
@@ -3419,7 +3481,7 @@ def cmd_weekly(cfg: dict, state: dict, dry: bool, days: int | None) -> int:
     else:
         since = now_local() - timedelta(days=cfg.get("first_run_days", 30))
 
-    run_dir = RUNS_DIR / now_local().strftime("%Y%m%d_%H%M")
+    run_dir = RUNS_DIR / now_local().strftime("%Y%m%d_%H%M%S")
     run_dir.mkdir(parents=True, exist_ok=True)
 
     changes: list[tuple[str, dict]] = []
@@ -3542,6 +3604,7 @@ def cmd_weekly(cfg: dict, state: dict, dry: bool, days: int | None) -> int:
         if errors:
             subject += " (fejl, handling krævet)"
         graph.send_mail(cfg["notify_email"], subject, html)
+        state["last_weekly_try"] = now_local().isoformat()
         if blocking:
             log.warning("Opslag og beskeder blev ikke gennemgået; perioden tages med igen ved næste kørsel.")
         else:
@@ -3591,6 +3654,9 @@ def main() -> int:
     ap.add_argument("command", choices=["opsaet", "login-aula", "login-outlook", "daily", "weekly", "manual", "ugeplan"])
     ap.add_argument("--dry-run", action="store_true", help="Vis hvad der ville ske, uden at skrive noget")
     ap.add_argument("--days", type=int, default=None, help="Antal dage tilbage (kun weekly)")
+    ap.add_argument("--indhent", nargs=2, metavar=("DAG", "TID"), default=None,
+                    help="Kun weekly: kør kun, hvis ugens kørsel (fx Sunday 07:00) mangler. "
+                         "Bruges af den planlagte opgave ved logon og oplåsning")
     ap.add_argument("--api", action="store_true", help="Brug API-nøgle i stedet for Claude Code eller Codex (kun opsaet)")
     ap.add_argument("--ai", choices=["claude", "chatgpt"], default=None, help="Vælg AI (kun opsaet)")
     args = ap.parse_args()
@@ -3606,8 +3672,27 @@ def main() -> int:
     if not cfg:
         log.error("Mangler config.json i %s. Kør først: %s opsaet", BASE, RUN)
         return 1
+    catch_up = args.indhent if args.command == "weekly" else None
+    if catch_up:
+        try:
+            last_scheduled(*catch_up, now_local())
+        except (KeyError, ValueError):
+            log.error("--indhent skal være en dag og et klokkeslæt, fx: --indhent Sunday 07:00")
+            return 1
+    lock = None
+    if args.command in ("daily", "weekly", "manual") and not args.dry_run:
+        lock = acquire_run_lock()
+        if lock is None:
+            if catch_up:
+                return 0  # Ugens kørsel er allerede i gang
+            say("Agenten kører allerede. Vent, til den er færdig, og prøv igen.")
+            return 1
     state = load_json(STATE_FILE, {"events": {}})
     state.setdefault("events", {})
+    if catch_up and not weekly_due(state, *catch_up):
+        return 0  # Ugens kørsel er allerede lavet. Stille, da det sker ved hver oplåsning.
+    if catch_up:
+        log.info("Indhenter ugens kørsel (planlagt %s %s)", *catch_up)
 
     if protect_config_secrets(cfg):
         save_json(CONFIG_FILE, cfg)
@@ -3644,6 +3729,8 @@ def main() -> int:
                     )
                     sent = True
                     state["last_error_notice"] = now_local().isoformat()
+                    if args.command == "weekly":
+                        state["last_weekly_try"] = now_local().isoformat()
                 except Exception:  # noqa: BLE001
                     log.exception("Kunne ikke sende fejlmail")
         if not sent:
