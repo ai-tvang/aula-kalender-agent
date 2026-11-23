@@ -4,7 +4,8 @@
 # Valgfrit: -Tid "07:00" -Dag Sunday -Daglig
 # -KunGenveje: opretter kun den planlagte opgave og genvejene for denne mappe
 #   (fx efter at agent-mappen er flyttet). Springer guiden og første kørsel over.
-# -KunStartmenu: opretter kun genvejene i Start-menuen (bruges ved opdatering). Rører ikke den planlagte opgave.
+# -KunStartmenu: opretter genvejene i Start-menuen (bruges ved opdatering). Findes den planlagte opgave
+#   for denne mappe, får den de nyeste udløsere med samme dag og tid som før.
 # Installeres normalt med én linje (se README), som henter agenten og kører dette script.
 
 param(
@@ -211,17 +212,53 @@ if ($LASTEXITCODE -ne 0) { Stop-Med "Opsætningen blev ikke færdig. Kør script
 
 if (-not $Test) {
 # 6. Planlagt opgave
-if (-not $KunStartmenu) {
+# Ud over det faste tidspunkt startes opgaven ved logon og ved oplåsning af skærmen. Mange laptops
+# (Modern Standby) bliver ikke vækket af planlagte opgaver, og Windows indhenter ikke kørslen bagefter.
+# Agenten kører derfor med --indhent: den kører kun, hvis ugens kørsel mangler, og ellers stopper den stille.
+$opgaveNavn = "Aula-kalenderagent ugentlig"
+$registrer = -not $KunStartmenu
+if ($KunStartmenu) {
+    # Ved opdatering: behold dag og tid fra den eksisterende opgave, og giv den de nye udløsere.
+    $gammel = Get-ScheduledTask -TaskName $opgaveNavn -ErrorAction SilentlyContinue
+    $uge = $null
+    if ($gammel -and $gammel.Actions[0].WorkingDirectory -eq $Dir) {
+        $uge = $gammel.Triggers | Where-Object { $_.CimClass.CimClassName -eq "MSFT_TaskWeeklyTrigger" } | Select-Object -First 1
+    }
+    if ($uge) {
+        $dagBit = @{1="Sunday";2="Monday";4="Tuesday";8="Wednesday";16="Thursday";32="Friday";64="Saturday"}
+        $fundetDag = $dagBit[[int]$uge.DaysOfWeek]
+        # Klokkeslættet læses som tekst: StartBoundary kan have sommertidens forskydning (+02:00).
+        if ($fundetDag -and ($uge.StartBoundary -match 'T(\d{2}:\d{2})')) {
+            $Dag = $fundetDag
+            $Tid = $Matches[1]
+            $registrer = $true
+        }
+    }
+}
+if ($registrer) {
 Trin "Automatisk kørsel"
 $uvSti = (Get-Command uv).Source
-$settings = New-ScheduledTaskSettingsSet -WakeToRun -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 1)
-$a = New-ScheduledTaskAction -Execute $uvSti -Argument "run --python-preference only-system agent.py weekly" -WorkingDirectory $Dir
-$t = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $Dag -At $Tid
-Register-ScheduledTask -TaskName "Aula-kalenderagent ugentlig" -Action $a -Trigger $t -Settings $settings -Force | Out-Null
+# uvw.exe er uv uden konsolvindue, så der ikke blinker et vindue ved hver oplåsning.
+$uvwSti = Join-Path (Split-Path $uvSti) "uvw.exe"
+$exe = if (Test-Path $uvwSti) { $uvwSti } else { $uvSti }
+$bruger = "$env:USERDOMAIN\$env:USERNAME"
+$settings = New-ScheduledTaskSettingsSet -WakeToRun -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 1) -MultipleInstances IgnoreNew
+$a = New-ScheduledTaskAction -Execute $exe -Argument "run --python-preference only-system agent.py weekly --indhent $Dag $Tid" -WorkingDirectory $Dir
+$udloesere = @(
+    (New-ScheduledTaskTrigger -Weekly -DaysOfWeek $Dag -At $Tid),
+    (New-ScheduledTaskTrigger -AtLogOn -User $bruger)
+)
+try {
+    $klasse = Get-CimClass -Namespace ROOT\Microsoft\Windows\TaskScheduler -ClassName MSFT_TaskSessionStateChangeTrigger
+    $udloesere += New-CimInstance -CimClass $klasse -ClientOnly -Property @{ StateChange = 8; UserId = $bruger; Enabled = $true }  # 8 = oplåsning
+} catch {
+    Write-Host "  Kunne ikke tilføje start ved oplåsning ($($_.Exception.Message)). Logon og fast tidspunkt virker stadig." -ForegroundColor Yellow
+}
+Register-ScheduledTask -TaskName $opgaveNavn -Action $a -Trigger $udloesere -Settings $settings -Force | Out-Null
 $dagDk = @{Monday="mandag";Tuesday="tirsdag";Wednesday="onsdag";Thursday="torsdag";Friday="fredag";Saturday="lørdag";Sunday="søndag"}[$Dag]
-Ok "Agenten kører hver $dagDk kl. $Tid. Er computeren slukket, kører den, så snart du tænder den."
+Ok "Agenten kører hver $dagDk kl. $Tid. Sover eller er computeren slukket, kører den, første gang du logger på eller låser op bagefter."
 if ($Daglig) {
-    $a2 = New-ScheduledTaskAction -Execute $uvSti -Argument "run --python-preference only-system agent.py daily" -WorkingDirectory $Dir
+    $a2 = New-ScheduledTaskAction -Execute $exe -Argument "run --python-preference only-system agent.py daily" -WorkingDirectory $Dir
     $t2 = New-ScheduledTaskTrigger -Daily -At "09:30"
     Register-ScheduledTask -TaskName "Aula-kalenderagent daglig" -Action $a2 -Trigger $t2 -Settings $settings -Force | Out-Null
     Ok "Daglig opgave oprettet"
