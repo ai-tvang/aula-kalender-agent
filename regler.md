@@ -7,8 +7,8 @@ Du kan rette i reglerne i denne fil, så de passer til jer. Ret ikke i afsnittet
 
 ## Hvilket barn gælder det?
 1. Opslag: brug "groups". Klassens gruppe og årgang peger på det barn, der går i klassen (se "Aula-grupper/ord" under Familien). En skolebred gruppe gælder alle børn på den skole.
-2. Tråde: brug emne, indhold, "regarding_children" (de af forælderens børn, tråden vedrører, hvis Aula angiver det) og afsenderens "sender_info" (fx "Anne 2A"). Deltagerlisten sendes ikke med, kun antallet ("participant_count").
-3. Børns navne i teksten kan hjælpe. Er du i tvivl, så læg det i weekly_mail som "usikker".
+2. Tråde: brug emne, indhold, "regarding_children" (de af forælderens børn, tråden vedrører, hvis Aula angiver det) og afsenderens "sender_info" (fx "Forælder 5, 2A"). Deltagerlisten sendes ikke med, kun antallet ("participant_count").
+3. Børns navne i teksten kan hjælpe. Er navnene skjult, er "Eget barn 1 (4.c)" osv. altid forælderens egne børn, mens fx "Barn 3" er et andet barn. Er du i tvivl, så læg det i weekly_mail som "usikker".
 
 ## Med i kalenderen
 - Skolebegivenheder, hvor forældre er inviteret eller velkomne (forældremøder, skolefest, fejringer, åbent hus).

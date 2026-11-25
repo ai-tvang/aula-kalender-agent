@@ -1011,7 +1011,11 @@ async def aula_fetch(cfg: dict, since: datetime, week: tuple[date, date] | None 
                 break
 
         out_threads = []
+        _names_state["participants"] = {}
         for t in threads:
+            # Deltagernes navne bruges kun lokalt til at afgøre, om et fornavn kan være en anden end forælderen.
+            _names_state["participants"][t.get("id")] = [
+                _profile_name(p) for p in t.get("participants") or [] if isinstance(p, dict)]
             msgs: dict[str, dict] = {}
             for mpage in range(0, 10):
                 resp = await client._request_with_version_retry(
@@ -1667,7 +1671,7 @@ Svar KUN med ét JSON-objekt i en ```json-blok, med denne form:
   "calendar": [
     {
       "key": "aula:<post-id eller thread-id>:<YYYY-MM-DD>:<kort-slug>",
-      "children": ["Emma"],
+      "children": ["<BARN>"],
       "title": "Kort titel uden barnets navn (præfiks tilføjes automatisk)",
       "date": "YYYY-MM-DD",
       "end_date": null,
@@ -1680,14 +1684,14 @@ Svar KUN med ét JSON-objekt i en ```json-blok, med denne form:
     }
   ],
   "weekly_mail": [
-    {"children": ["Emma"], "category": "usikker|tilbud|overlap|uden dato|andet", "text": "..."}
+    {"children": ["<BARN>"], "category": "usikker|tilbud|overlap|uden dato|andet", "text": "..."}
   ],
   "fri": [
-    {"date": "YYYY-MM-DD", "children": ["Emma"], "time": "HH:MM", "note": "grund på 1-3 ord, kun hvis det afviger fra skemaet"}
+    {"date": "YYYY-MM-DD", "children": ["<BARN>"], "time": "HH:MM", "note": "grund på 1-3 ord, kun hvis det afviger fra skemaet"}
   ],
   "husk": [
-    {"date": "YYYY-MM-DD", "children": ["Emma"], "text": "Idræt: idrætstøj og håndklæde. Computer opladet.", "source": "Skema, Ugeplan 3.a"},
-    {"date": "YYYY-MM-DD", "children": ["Emma"], "type": "lektie", "text": "Lektie til torsdag: Læs kap. 3 + opgaver.", "source": "Ugeplan 3.a"}
+    {"date": "YYYY-MM-DD", "children": ["<BARN>"], "text": "Idræt: idrætstøj og håndklæde. Computer opladet.", "source": "Skema, Ugeplan 3.a"},
+    {"date": "YYYY-MM-DD", "children": ["<BARN>"], "type": "lektie", "text": "Lektie til torsdag: Læs kap. 3 + opgaver.", "source": "Ugeplan 3.a"}
   ]
 }
 
@@ -1700,20 +1704,33 @@ Regler for "key":
 """
 
 
-def family_section(cfg: dict) -> str:
-    """Bygger afsnittet om familien ud fra config.json."""
+def family_section(cfg: dict, names: "NameMask | None" = None) -> str:
+    """Bygger afsnittet om familien ud fra config.json.
+
+    Med names (navneskjul slået til) står familiens dæknavne i stedet for navnene, og noter skjules.
+    """
     p = cfg["parent"]
-    name = p["name"]
+    name = FAMILY_PARENT_ALIAS if names else p["name"]
     role = p.get("role", "forælder")
+
+    def cn(c: dict) -> str:
+        return names.child_alias.get(c["name"], c["name"]) if names else c["name"]
+
     lines = ["## Familien"]
-    lines.append(
-        f"- Forælderen hedder {name} (står sådan i Aula) og er {role}. "
-        f"Beskeder skrevet af {name} tæller som bekræftelser."
-    )
+    if names:
+        lines.append(
+            f'- Forælderen, som kalenderen er til, kaldes "{name}" og er {role}. '
+            f"Beskeder skrevet af {name} tæller som bekræftelser."
+        )
+    else:
+        lines.append(
+            f"- Forælderen hedder {name} (står sådan i Aula) og er {role}. "
+            f"Beskeder skrevet af {name} tæller som bekræftelser."
+        )
     if p.get("contact_parent_in"):
         lines.append(f"- {name} er kontaktforælder i: {', '.join(p['contact_parent_in'])}.")
     for c in cfg["children"]:
-        line = f"- **{c['name']}** går i **{c['class']}**"
+        line = f"- **{cn(c)}** går i **{c['class']}**"
         if c.get("school"):
             line += f" på {c['school']}"
         if c.get("department"):
@@ -1721,9 +1738,9 @@ def family_section(cfg: dict) -> str:
         line += "."
         if c.get("previous_class_names"):
             prev = ", ".join(c["previous_class_names"])
-            line += f" Klassen hed tidligere {prev}, så tråde med de navne gælder {c['name']}."
+            line += f" Klassen hed tidligere {prev}, så tråde med de navne gælder {cn(c)}."
         if c.get("aula_groups"):
-            line += f" Aula-grupper/ord der peger på {c['name']}: {', '.join(c['aula_groups'])}."
+            line += f" Aula-grupper/ord der peger på {cn(c)}: {', '.join(c['aula_groups'])}."
         if c.get("clubs"):
             line += f" Går i: {', '.join(c['clubs'])}."
         lines.append(line)
@@ -1732,7 +1749,7 @@ def family_section(cfg: dict) -> str:
     elif role == "mor":
         lines.append("- Arrangementer kun for fædre (fx fædreøl) er ikke med i kalenderen.")
     for note in cfg.get("family_notes", []):
-        lines.append(f"- {note}")
+        lines.append(f"- {names.mask_text(note, names.all_family) if names else note}")
     return "\n".join(lines) + "\n"
 
 
@@ -2436,14 +2453,28 @@ NAME_ALSO_WORDS = {"Hans", "Bo", "Mark", "Sol", "Dag", "Storm", "Maj", "Juni", "
 SURNAME_ALSO_WORDS = {"Holm", "Skov", "Lund", "Dam", "Bak", "Strand", "Berg", "Bach", "Krog", "Vinter", "Sommer",
                       "Høj", "Bjerg", "Kirk", "Bager", "Smed", "Bonde", "Fisker", "Ravn", "Due", "Kok", "Have",
                       "Gade", "Bro", "Borg", "Sand", "Ring", "Eng", "Mose", "Ny", "Mølle", "Hald", "Ager"}
-ALIAS_WORDS = {"Barn", "Forælder", "Medarbejder", "Person"}
+ALIAS_WORDS = {"Barn", "Forælder", "Medarbejder", "Person", "Eget", "Forælderen"}
 MASK_SKIP_KEYS = {"key", "image_file", "date", "end_date", "start", "end", "time", "today", "new_since",
                   "weekday_today", "from", "to", "type"}
+# Familien har faste dæknavne. Børnene nummereres i samme rækkefølge som i config.json.
+FAMILY_PARENT_ALIAS = "Forælderen"
+FAMILY_CHILD_RX = re.compile(r"\b[Ee]get [Bb]arn (\d+)(?: ?\([^)\n]{0,12}\))?")
 NAMES_HINT = (
-    'Navne på andre end familien er erstattet med dæknavne som "Barn 3", "Forælder 5" og "Medarbejder 2". '
-    "Samme dæknavn er altid samme person. Brug dæknavnene præcis som de står (fx \"Barn 3s fødselsdag\"); "
-    "de rigtige navne sættes ind igen bagefter."
+    'Alle navne er erstattet med dæknavne, før teksten blev sendt. Familien har faste dæknavne: '
+    '"Forælderen" er den forælder, kalenderen er til, og børnene hedder fx "Eget barn 1 (4.c)" (se Familien). '
+    'Andre hedder fx "Barn 3", "Forælder 5" og "Medarbejder 2". Samme dæknavn er altid samme person. '
+    'Brug dæknavnene præcis, som de står, også i "children" (fx ["Eget barn 1 (4.c)"]). '
+    "De rigtige navne sættes ind igen bagefter."
 )
+
+
+def family_child_alias(i: int, child: dict) -> str:
+    return f"Eget barn {i} ({child['class']})" if child.get("class") else f"Eget barn {i}"
+
+
+def _group_class(name: str) -> str | None:
+    """Klassen i et gruppenavn som "1B" eller "1.B", ellers None. "1.B Kontaktforældre" er ikke klassen."""
+    return normalize_class(name)
 
 
 def _profile_name(p: dict) -> str:
@@ -2499,6 +2530,10 @@ async def fetch_people(client, prof) -> list[tuple[str, str]]:
     people: list[tuple[str, str]] = []
     seen: set = set()
     failed = 0
+    # Familiens navne, som Aula skriver dem, og hvem der er med i hvilken gruppe. Bliver på computeren.
+    _names_state["family"] = {"parent": str(getattr(prof, "display_name", "") or ""),
+                              "children": [str(getattr(c, "name", "") or "") for c in prof.children]}
+    _names_state["groups"] = {}
     try:
         for c in prof.children:
             for g in await client.get_groups(child_institution_profile_ids=[c.id]):
@@ -2506,7 +2541,9 @@ async def fetch_people(client, prof) -> list[tuple[str, str]]:
                     continue
                 seen.add(g.id)
                 try:
-                    people.extend(await _group_members(client, g.id))
+                    members = await _group_members(client, g.id)
+                    people.extend(members)
+                    _names_state["groups"].setdefault(str(getattr(g, "name", "") or ""), []).extend(n for n, _ in members)
                 except Exception as e:  # noqa: BLE001
                     failed += 1
                     log.debug("Gruppelisten for %s kunne ikke hentes: %s", g.name, e)
@@ -2532,19 +2569,25 @@ def _name_tokens(name: str) -> list[str]:
 
 
 class NameMask:
-    """Erstatter navne på andre end familien med dæknavne og sætter dem tilbage i AI'ens svar.
+    """Erstatter navne med dæknavne, før noget sendes til AI'en, og sætter dem tilbage i AI'ens svar.
 
     Fornavne fra Aulas gruppelister og fra afsendere skjules, og det samme gør kendte efternavne og
     mellemnavne, der står lige efter et fornavn, også når hele navnet ikke står på listerne (fx en søskende).
     Kendte efternavne, der står alene, skjules også ("Dansk med Hansen"), undtagen efternavne, der også
-    er almindelige ord, først i en sætning. Forælderens og egne børns navne skjules ikke; dem skal AI'en
-    bruge. Navne, hvor hverken fornavn eller efternavn står på nogen liste, slipper igennem.
+    er almindelige ord, først i en sætning.
+
+    Familien får faste dæknavne: "Forælderen" og "Eget barn 1 (4.c)" osv. Et fuldt navn, mærket fra
+    kalenderen ("Emma 2.a") og felter, der kun handler om egne børn, får altid familiens dæknavn. Et
+    fornavn alene er kun familiens, hvis det er entydigt, eller hvis teksten handler om barnet (tråden
+    vedrører barnet, opslaget er delt med klassen, ugeplanen er barnets) og ingen anden i klassen har
+    samme fornavn. For forælderen gælder det i tråde, hvor ingen anden deltager har samme fornavn.
+    Ellers får fornavnet samme fælles dæknavn som de andre med det fornavn.
+    Navne, hvor hverken fornavn eller efternavn står på nogen liste, slipper igennem.
     """
 
-    def __init__(self, cfg: dict, people: list[tuple[str, str]]):
-        self.keep = {w.lower() for w in _name_tokens(cfg.get("parent", {}).get("name", ""))}
-        for c in cfg.get("children", []):
-            self.keep |= {w.lower() for w in _name_tokens(c.get("name", ""))}
+    def __init__(self, cfg: dict, people: list[tuple[str, str]], family: dict | None = None,
+                 groups: dict | None = None, participants: dict | None = None):
+        self.cfg = cfg
         self.persons: dict[tuple, dict] = {}   # navnets ord -> person
         self.by_first: dict[str, list[dict]] = {}
         self.back: dict[str, str] = {}         # dæknavn -> tekst, der sættes tilbage
@@ -2554,10 +2597,54 @@ class NameMask:
         self.sur_labels: dict[str, set] = {}   # efternavn/mellemnavn fra listerne -> roller
         self.combo: dict[str, str] = {}        # navn, der ikke står samlet på listerne -> dæknavn
         self.sur_alias: dict[str, str] = {}    # efternavn alene -> dæknavn
+        self.participants = participants or {}
         self._rx = None
         self._srx = None
+        family = family or {}
+        # Familien: id ("parent" eller barnets navn i config) -> medlem
+        self.members: dict[str, dict] = {}
+        self.child_alias: dict[str, str] = {}  # barnets navn i config -> dæknavn
+        self.child_by_no: dict[int, str] = {}  # nummer i dæknavnet -> barnets navn
+        self.labels: list[tuple[str, str]] = []  # mærke fra kalenderen ("Emma 2.a") -> dæknavn
+        cfg_parent = cfg.get("parent", {}).get("name", "")
+        if cfg_parent.startswith("Dit fulde navn"):  # eksemplet fra config.example.json
+            cfg_parent = ""
+        parent_names = [cfg_parent, family.get("parent", "")]
+        parent_tokens = [t for t in (_name_tokens(n) for n in parent_names) if t]
+        self.parent_first = parent_tokens[0][0] if parent_tokens else None
+        if self.parent_first:
+            self.members["parent"] = {"id": "parent", "first": self.parent_first, "alias": FAMILY_PARENT_ALIAS,
+                                      "conflict": False}
+            for toks in parent_tokens:
+                self._add_person(toks, "Forælder", self.members["parent"])
+        for i, c in enumerate(cfg.get("children", []), 1):
+            if not c.get("name"):
+                continue
+            alias = family_child_alias(i, c)
+            m = {"id": c["name"], "first": c["name"], "alias": alias, "class": c.get("class"), "conflict": False}
+            self.members[c["name"]] = m
+            self.child_alias[c["name"]] = alias
+            self.child_by_no[i] = c["name"]
+            if c.get("label"):
+                self.labels.append((c["label"], alias))
+            full = [_name_tokens(n) for n in family.get("children", []) if _child_name(cfg, n) == c["name"]]
+            for toks in [t for t in full if t] or [[c["name"]]]:
+                self._add_person(toks, "Barn", m)
+        self.labels.sort(key=lambda x: len(x[0]), reverse=True)
+        self.all_family = frozenset(self.members)
         for name, role in people:
             self.add(name, role)
+        # Et barn i klassen med samme fornavn som et af egne børn: så er fornavnet alene ikke nok.
+        for m in self.members.values():
+            if m["id"] == "parent" or not m.get("class"):
+                continue
+            for gname, names in (groups or {}).items():
+                if _group_class(gname) != m["class"]:
+                    continue
+                for n in names:
+                    toks = _name_tokens(n)
+                    if toks and toks[0] == m["first"] and self.persons.get(tuple(t.lower() for t in toks), {}).get("family") is not m:
+                        m["conflict"] = True
 
     def _alias(self, label: str, restore: str) -> str:
         self.counts[label] = self.counts.get(label, 0) + 1
@@ -2565,9 +2652,25 @@ class NameMask:
         self.back[alias] = restore
         return alias
 
+    def _add_person(self, tokens: list[str], label: str, member: dict | None) -> None:
+        key = tuple(t.lower() for t in tokens)
+        if key in self.persons:
+            if member and not self.persons[key].get("family"):
+                self.persons[key]["family"] = member
+            return
+        person = {"tokens": tokens, "rest": {t.lower() for t in tokens[1:]}, "label": label, "alias": None,
+                  "family": member}
+        self.persons[key] = person
+        self.by_first.setdefault(tokens[0], []).append(person)
+        for t in tokens[1:]:
+            if t not in ALIAS_WORDS:
+                self.sur_labels.setdefault(t, set()).add(label)
+        self._rx = None
+        self._srx = None
+
     def add(self, name: str, role: str = "") -> None:
         tokens = _name_tokens(name)
-        if not tokens or tokens[0].lower() in self.keep:
+        if not tokens:
             return
         key = tuple(t.lower() for t in tokens)
         label = NAME_LABELS.get((role or "").lower(), "Person")
@@ -2575,14 +2678,7 @@ class NameMask:
             if self.persons[key]["label"] == "Person" and label != "Person":
                 self.persons[key]["label"] = label
             return
-        person = {"tokens": tokens, "rest": {t.lower() for t in tokens[1:]}, "label": label, "alias": None}
-        self.persons[key] = person
-        self.by_first.setdefault(tokens[0], []).append(person)
-        for t in tokens[1:]:
-            if t.lower() not in self.keep and t not in ALIAS_WORDS:
-                self.sur_labels.setdefault(t, set()).add(label)
-        self._rx = None
-        self._srx = None
+        self._add_person(tokens, label, None)
 
     def add_from_payload(self, payload: dict) -> None:
         """Afsendere og forfattere, der ikke stod på gruppelisterne."""
@@ -2594,6 +2690,8 @@ class NameMask:
                 self.add(m.get("sender") or "")
 
     def _person_alias(self, person: dict) -> str:
+        if person.get("family"):
+            return person["family"]["alias"]
         if not person["alias"]:
             first = person["tokens"][0]
             alone = len(self.by_first[first]) == 1
@@ -2636,8 +2734,34 @@ class NameMask:
             if isinstance(item, dict) and item.get("key") in self.keys:
                 item["key"] = self.keys[item["key"]]
 
-    def mask_text(self, text: str) -> str:
-        if not text or not self.by_first:
+    # ----- sammenhæng: hvornår er et fornavn alene familiens? -----
+    def _ctx(self, ids) -> frozenset:
+        return frozenset(i for i in ids if i in self.members and not self.members[i]["conflict"])
+
+    def _class_ids(self, group_names) -> list[str]:
+        classes = {_group_class(str(g or "")) for g in group_names or []}
+        return [i for i, m in self.members.items() if m.get("class") and m["class"] in classes]
+
+    def _label_ids(self, text: str) -> list[str]:
+        return [i for i, m in self.members.items() if i != "parent"
+                and any(lab in (text or "") for lab, al in self.labels if al == m["alias"])]
+
+    def _thread_ids(self, thread: dict) -> list[str]:
+        ids = [c for c in thread.get("regarding_children") or [] if c in self.members]
+        if self.parent_first:
+            others = [_name_tokens(n) for n in self.participants.get(thread.get("thread_id"), [])]
+            others = [t for t in others if t and t[0] == self.parent_first
+                      and self.persons.get(tuple(x.lower() for x in t), {}).get("family") is None]
+            if not others:
+                ids.append("parent")
+        return ids
+
+    def mask_text(self, text: str, ctx: frozenset = frozenset()) -> str:
+        if not text:
+            return text
+        for label, alias in self.labels:  # Kalenderens mærke ("Emma 2.a") er altid eget barn
+            text = re.sub(r"(?<![\w\-])" + re.escape(label) + r"(?![\w])", alias, text)
+        if not self.by_first:
             return text
         if self._rx is None:
             names = sorted(self.by_first, key=len, reverse=True)
@@ -2667,7 +2791,14 @@ class NameMask:
                 alias = self._combo_alias(text[m.start(): end])
             else:
                 match = [p for p in cands if used <= p["rest"]] if used else cands
-                alias = self._person_alias(match[0]) if len(match) == 1 else self._shared_alias(first)
+                fam = [p["family"] for p in match if p.get("family") and p["family"]["id"] in ctx]
+                owners = {p["family"]["id"] if p.get("family") else id(p) for p in match}
+                if len(owners) == 1:  # Én person (familien kan stå med flere stavemåder)
+                    alias = self._person_alias(match[0])
+                elif not used and fam:
+                    alias = fam[0]["alias"]
+                else:
+                    alias = self._shared_alias(first)
             out.append(text[pos: m.start()] + alias)
             pos = end
         out.append(text[pos:])
@@ -2691,21 +2822,70 @@ class NameMask:
         out.append(text[pos:])
         return "".join(out)
 
-    def mask(self, obj):
+    def mask(self, obj, ctx: frozenset = frozenset()):
         if isinstance(obj, dict):
-            return {k: (v if k in MASK_SKIP_KEYS else self.mask(v)) for k, v in obj.items()}
+            return {k: (v if k in MASK_SKIP_KEYS else self.mask(v, ctx)) for k, v in obj.items()}
         if isinstance(obj, list):
-            return [self.mask(v) for v in obj]
-        return self.mask_text(obj) if isinstance(obj, str) else obj
+            return [self.mask(v, ctx) for v in obj]
+        return self.mask_text(obj, ctx) if isinstance(obj, str) else obj
+
+    def mask_payload(self, payload: dict) -> dict:
+        """Hele det, der sendes til AI'en, med den rette sammenhæng for hvert opslag, hver tråd og hvert barn."""
+        out = {}
+        for k, v in payload.items():
+            if k in MASK_SKIP_KEYS:
+                out[k] = v
+            elif k == "children" and isinstance(v, list):
+                out[k] = [self._mask_child(c) for c in v]
+            elif k == "posts" and isinstance(v, list):
+                out[k] = [self.mask(p, self._ctx(self._class_ids(p.get("groups")))) if isinstance(p, dict) else self.mask(p)
+                          for p in v]
+            elif k == "threads" and isinstance(v, list):
+                out[k] = [self._mask_thread(t) if isinstance(t, dict) else self.mask(t) for t in v]
+            elif k == "existing_events" and isinstance(v, list):
+                out[k] = [self.mask(e, self._ctx(self._label_ids(e.get("subject")))) if isinstance(e, dict) else self.mask(e)
+                          for e in v]
+            elif k == "week_plan" and isinstance(v, dict):
+                wp = {kk: self.mask(vv) for kk, vv in v.items() if kk != "children"}
+                if isinstance(v.get("children"), dict):
+                    wp["children"] = {self.child_alias.get(n, self.mask_text(n)): self.mask(sec, self._ctx([n]))
+                                      for n, sec in v["children"].items()}
+                out[k] = wp
+            else:
+                out[k] = self.mask(v)
+        return out
+
+    def _mask_child(self, c):
+        if not isinstance(c, dict) or c.get("name") not in self.child_alias:
+            return self.mask(c)
+        alias = self.child_alias[c["name"]]
+        return {k: (alias if k in ("name", "label") else self.mask(v, self._ctx([c["name"]]))) for k, v in c.items()}
+
+    def _mask_thread(self, t: dict) -> dict:
+        ctx = self._ctx(self._thread_ids(t))
+        out = {}
+        for k, v in t.items():
+            if k == "regarding_children" and isinstance(v, list):
+                out[k] = [self.child_alias.get(c, self.mask_text(c)) if isinstance(c, str) else c for c in v]
+            elif k in MASK_SKIP_KEYS or k == "thread_id":
+                out[k] = v
+            else:
+                out[k] = self.mask(v, ctx)
+        return out
 
     def restore(self, obj):
         if isinstance(obj, dict):
             return {k: (v if k == "key" else self.restore(v)) for k, v in obj.items()}
         if isinstance(obj, list):
             return [self.restore(v) for v in obj]
-        if isinstance(obj, str) and self.back:
-            return re.sub(r"\b(Barn|Forælder|Medarbejder|Person) (\d+)(?!\d)",
-                          lambda m: self.back.get(m.group(0), m.group(0)), obj)
+        if isinstance(obj, str):
+            if self.child_by_no:
+                obj = FAMILY_CHILD_RX.sub(lambda m: self.child_by_no.get(int(m.group(1)), m.group(0)), obj)
+            if self.parent_first:
+                obj = re.sub(r"\b" + FAMILY_PARENT_ALIAS + r"\b", self.parent_first, obj)
+            if self.back:
+                obj = re.sub(r"\b(Barn|Forælder|Medarbejder|Person) (\d+)(?!\d)",
+                             lambda m: self.back.get(m.group(0), m.group(0)), obj)
         return obj
 
 
@@ -2742,16 +2922,19 @@ def run_ai(cfg: dict, payload: dict, run_dir: Path) -> dict:
     rules = RULES_FILE.read_text(encoding="utf-8")
     names = None
     if cfg.get("hide_names", True):
-        names = NameMask(cfg, _names_state.get("people") or [])
+        names = NameMask(cfg, _names_state.get("people") or [], _names_state.get("family"),
+                         _names_state.get("groups"), _names_state.get("participants"))
         names.add_from_payload(payload)
         payload = copy.deepcopy(payload)
         names.opaque_keys(payload)
-        payload = names.mask(payload)
+        payload = names.mask_payload(payload)
+    kids = cfg.get("children") or []
+    example = (names.child_alias.get(kids[0].get("name"), "Barn") if names else kids[0].get("name", "Barn")) if kids else "Barn"
     prompt = (
-        f"{rules}\n{family_section(cfg)}\n{OUTPUT_SPEC}\n"
+        f"{rules}\n{family_section(cfg, names)}\n{OUTPUT_SPEC.replace('<BARN>', example)}\n"
         "## Data\n"
         f"{IMAGE_TEXT_HINT if images_mode(cfg) == 'text' else IMAGE_HINTS[mode]}\n"
-        f"{NAMES_HINT if names and names.back else ''}\n\n"
+        f"{NAMES_HINT if names else ''}\n\n"
         f"```json\n{json.dumps(payload, ensure_ascii=False, indent=1)}\n```\n"
     )
     (run_dir / "prompt.md").write_text(prompt, encoding="utf-8")
@@ -2779,12 +2962,13 @@ def run_ai(cfg: dict, payload: dict, run_dir: Path) -> dict:
     if not isinstance(result, dict):
         raise RuntimeError(f"{ai_name(cfg)} svarede ikke i det forventede format.")
     save_json(run_dir / "ai_result.json", result)
-    if names and names.back:
-        # Nøglen til dæknavnene bliver på computeren og slettes sammen med kørslens mappe.
-        save_json(run_dir / "navne.json", names.back)
-        log.info("Navne: %d dæknavne brugt i det, der blev sendt til %s", len(names.back), ai_name(cfg))
-        result = names.restore(result)
     if names:
+        if names.back:
+            # Nøglen til dæknavnene bliver på computeren og slettes sammen med kørslens mappe.
+            save_json(run_dir / "navne.json", names.back)
+        log.info("Navne: %d dæknavne brugt i det, der blev sendt til %s (plus familiens faste)",
+                 len(names.back), ai_name(cfg))
+        result = names.restore(result)
         names.restore_keys(result)
     return result
 

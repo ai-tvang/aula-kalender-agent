@@ -1,5 +1,6 @@
 """Tests af repo-versionen med falske svar. Kør: python3 test_repo.py <repo-mappe>"""
 import asyncio
+import copy
 import json
 import re
 import shutil
@@ -246,28 +247,29 @@ check("OCR: højst 10 billeder hentes pr. opslag", len(fh3.urls) == agent.IMAGE_
 check("OCR: uden Windows findes OCR ikke (None)", agent.sys.platform == "win32" or real_ocr([att_dir / "x.png"]) is None)
 
 # 2g. Navne på andre end familien får dæknavne og sættes tilbage i svaret
-ncfg = {"parent": {"name": "Thomas Vang"}, "children": [{"name": "Peter"}, {"name": "Jakob"}]}
+ncfg = {"parent": {"name": "Anders Bech"}, "children": [{"name": "Emma", "label": "Emma 2.a", "class": "2.a"},
+                                                     {"name": "Oscar", "label": "Oscar 0.b", "class": "0.b"}]}
 nm = agent.NameMask(ncfg, [("Hugo Jensen", "child"), ("Louise Holm Hansen (Hugo 1.B)", "guardian"), ("Hans Skov", "guardian"),
-                           ("Emma Lund", "child"), ("Emma Bak", "child"), ("Mette Dam", "employee"), ("Peter Olsen", "child")])
+                           ("Ida Lund", "child"), ("Ida Bak", "child"), ("Mette Dam", "employee"), ("Oscar Olsen", "child")])
 npl = {"posts": [{"author": "Mette Dam", "author_role": "employee", "date": "2030-11-09", "key": "aula:1:hugo",
-                  "text": "Hans mor kommer. Vi mødes med Hans Skov og Emma Lund. Emma og Peter kommer også."}],
+                  "text": "Hans mor kommer. Vi mødes med Hans Skov og Ida Lund. Ida og Oscar kommer også."}],
        "threads": [{"subject": "Hugos fødselsdag", "messages": [
            {"sender": "Louise Holm Hansen", "text": "Hugo fylder 7. Hilsen Louise og Karen Ny"}]},
            {"subject": "Svar", "messages": [{"sender": "Karen Ny", "text": "Vi kommer"}]}]}
 nm.add_from_payload(npl)
 nx = nm.mask(npl)
 ntext = json.dumps(nx, ensure_ascii=False)
-check("Navne: børn, forældre og medarbejdere får dæknavne", not any(n in ntext for n in ("Hugo", "Louise", "Skov", "Emma", "Mette", "Karen")))
+check("Navne: børn, forældre og medarbejdere får dæknavne", not any(n in ntext for n in ("Hugo", "Louise", "Skov", "Ida", "Mette", "Karen")))
 check("Navne: rollen fremgår af dæknavnet", nx["posts"][0]["author"].startswith("Medarbejder ") and nx["threads"][0]["messages"][0]["sender"].startswith("Forælder "))
 check("Navne: ejefald bevares", re.fullmatch(r"Barn \d+s fødselsdag", nx["threads"][0]["subject"]) is not None)
-check("Navne: familiens egne navne skjules ikke", "Peter kommer" in nx["posts"][0]["text"])
+check("Navne: et af familiens fornavne skjules også, når en anden har det", "Oscar" not in nx["posts"][0]["text"])
 check("Navne: 'Hans' først i en sætning er ikke et navn", nx["posts"][0]["text"].startswith("Hans mor"))
 check("Navne: samme person får samme dæknavn", nx["threads"][0]["messages"][0]["sender"] in nx["threads"][0]["messages"][0]["text"])
 check("Navne: nøgler og datoer røres ikke", nx["posts"][0]["key"] == "aula:1:hugo" and nx["posts"][0]["date"] == "2030-11-09")
 hugo = nx["threads"][0]["subject"].split("s fød")[0]
 back = nm.restore({"title": f"{hugo}s fødselsdag", "notes": f"{nx['threads'][0]['messages'][0]['sender']} inviterer.", "key": "aula:1:barn-1"})
 check("Navne: sættes tilbage i svaret", back["title"] == "Hugos fødselsdag" and back["notes"] == "Louise inviterer." and back["key"] == "aula:1:barn-1")
-check("Navne: to med samme fornavn holdes adskilt", sorted(v for v in nm.back.values() if v.startswith("Emma")) == ["Emma", "Emma Lund"])
+check("Navne: to med samme fornavn holdes adskilt", sorted(v for v in nm.back.values() if v.startswith("Ida")) == ["Ida", "Ida Lund"])
 check("Navne: uden navneliste ændres intet", agent.NameMask(ncfg, []).mask({"t": "Hugo kommer"}) == {"t": "Hugo kommer"})
 
 # 2h. Gruppelister i Aulas nuværende form (én post pr. rolle med institutionProfiles) og tavs fejl
@@ -331,9 +333,9 @@ check("Navne: sætningsstart efter mellemrum og linjeskift virker ens", nm2._sen
 
 # Efternavne: også når hele navnet ikke står på listerne, og når efternavnet står alene
 nm4 = agent.NameMask(ncfg, [("Simon Hansen", "child"), ("Anne Jensen", "guardian"), ("Anne Skov", "guardian"),
-                            ("Ida Hansen", "guardian"), ("Mette Kirk", "employee"), ("Rasmus Vang", "child")])
+                            ("Ida Hansen", "guardian"), ("Mette Kirk", "employee"), ("Rasmus Lind", "child")])
 src4 = ("Anne Hansen henter Simon. Dansk med Kirk. Fru Jensen kommer, og Hansens bil holder ude. "
-        "Skov og strand i morgen. Vi ses hos Skov. Familien Vang kommer. Ida Marie Hansen ringer.")
+        "Skov og strand i morgen. Vi ses hos Skov. Familien Lind kommer. Ida Marie Hansen ringer.")
 t4 = nm4.mask_text(src4)
 check("Efternavne: fornavn + kendt efternavn skjules, selvom hele navnet ikke står på listerne",
       "Anne Hansen" not in t4 and t4.startswith("Person "))
@@ -341,8 +343,68 @@ check("Efternavne: alene skjules (efter 'med', 'Fru' og i ejefald)", all(n not i
 check("Efternavne: rollen følger efternavnet, når den er entydig", re.search(r"med Medarbejder \d+\.", t4) is not None)
 check("Efternavne: ord som 'Skov' først i en sætning skjules ikke, men gør midt i en sætning",
       "Skov og strand" in t4 and "hos Skov" not in t4)
-check("Efternavne: familiens efternavn skjules ikke", "Familien Vang kommer" in t4)
+check("Efternavne: også familiens efternavn skjules", "Lind" not in t4)
 check("Efternavne: alt sættes tilbage, som det stod", nm4.restore({"t": t4})["t"] == src4)
+
+# Familien får faste dæknavne. Fornavn alene er kun familiens, når sammenhængen siger det
+fam_people = [("Emma Bech", "child"), ("Oscar Bech", "child"), ("Anders Bech", "guardian"), ("Oscar Holt", "child"),
+              ("Emma Lind", "child"), ("Anders Krog", "guardian"), ("Lone Dahl", "guardian"), ("Sofie Dahl", "child")]
+fam_info = {"parent": "Anders Bech", "children": ["Emma Bech", "Oscar Bech"]}
+fam_groups = {"2A": ["Emma Bech", "Sofie Dahl"], "0B": ["Oscar Bech", "Oscar Holt"], "3A": ["Emma Lind"],
+              "Alle forældre": ["Anders Bech", "Anders Krog", "Lone Dahl"]}
+fam_part = {1: ["Anders Bech", "Lone Dahl (Sofie 2A)"], 2: ["Anders Bech", "Anders Krog (Oscar 0B)"]}
+fpl = {
+    "today": "2030-11-10",
+    "children": [{"name": "Emma", "label": "Emma 2.a", "class": "2.a", "aula_groups": ["2A"]},
+                 {"name": "Oscar", "label": "Oscar 0.b", "class": "0.b", "aula_groups": ["0B"]}],
+    "posts": [{"groups": ["2A"], "author": "Lone Dahl", "text": "Emma skal have idrætstøj med."},
+              {"groups": ["3. årgang"], "author": "Lone Dahl", "text": "Emma fra 3.a har fødselsdag."},
+              {"groups": ["0B"], "author": "Lone Dahl", "text": "Oscar kommer også."}],
+    "threads": [{"thread_id": 1, "subject": "Tur", "regarding_children": ["Emma"], "messages": [
+                    {"sender": "Anders Bech", "text": "Hej Anders. Emma er syg. Emma Bech har feber."}]},
+                {"thread_id": 2, "subject": "Møde", "regarding_children": [], "messages": [
+                    {"sender": "Anders Krog", "text": "Hej Anders. Familien Bech er inviteret."}]}],
+    "existing_events": [{"key": "aula:1:x", "subject": "[Oscar 0.b] Fri", "notes": ""}],
+    "week_plan": {"children": {"Emma": {"huskeliste": [{"tekst": "Kage: Emma"}]}, "Oscar": {"huskeliste": []}}},
+}
+fm = agent.NameMask(ncfg, fam_people, fam_info, fam_groups, fam_part)
+fm.add_from_payload(fpl)
+fx = fm.mask_payload(copy.deepcopy(fpl))
+ftext = json.dumps(fx, ensure_ascii=False)
+check("Familie: ingen af familiens navne i det, der sendes", not any(n in ftext for n in ("Emma", "Oscar", "Anders", "Bech")))
+check("Familie: fornavn alene i et opslag til klassen er eget barn", fx["posts"][0]["text"] == "Eget barn 1 (2.a) skal have idrætstøj med.")
+check("Familie: fornavn alene i et opslag til en anden klasse får fælles dæknavn",
+      re.fullmatch(r"Barn \d+ fra 3\.a har fødselsdag\.", fx["posts"][1]["text"]) is not None)
+check("Familie: en anden i klassen med samme fornavn giver fælles dæknavn", re.fullmatch(r"Barn \d+ kommer også\.", fx["posts"][2]["text"]) is not None)
+th1 = fx["threads"][0]
+check("Familie: forælderen som afsender og i tråden", th1["messages"][0]["sender"] == "Forælderen"
+      and th1["messages"][0]["text"] == "Hej Forælderen. Eget barn 1 (2.a) er syg. Eget barn 1 (2.a) har feber.")
+check("Familie: regarding_children får dæknavn", th1["regarding_children"] == ["Eget barn 1 (2.a)"])
+check("Familie: forælderens fornavn er fælles, når en anden deltager har det",
+      re.fullmatch(r"Hej Forælder \d+\. Familien (Person|Forælder|Barn) \d+ er inviteret\.", fx["threads"][1]["messages"][0]["text"]) is not None)
+check("Familie: kalenderens mærke bliver dæknavn", fx["existing_events"][0]["subject"] == "[Eget barn 2 (0.b)] Fri")
+check("Familie: ugeplanen pr. barn under dæknavn", sorted(fx["week_plan"]["children"]) == ["Eget barn 1 (2.a)", "Eget barn 2 (0.b)"]
+      and fx["week_plan"]["children"]["Eget barn 1 (2.a)"]["huskeliste"][0]["tekst"] == "Kage: Eget barn 1 (2.a)")
+check("Familie: børnenes oplysninger under dæknavn", [c["name"] for c in fx["children"]] == ["Eget barn 1 (2.a)", "Eget barn 2 (0.b)"]
+      and fx["children"][0]["label"] == "Eget barn 1 (2.a)" and fx["children"][0]["aula_groups"] == ["2A"])
+fres = fm.restore({"calendar": [{"key": "aula:1:x", "children": ["Eget barn 1 (2.a)"], "title": "Eget barn 1 (2.a)s fødselsdag",
+                                 "notes": "Forælderen skal bage. Eget barn 2 tager med."}],
+                   "husk": [{"children": ["Eget barn 2 (0.b)", "eget barn 1"], "text": "Kage: Eget Barn 1 (2.a)"}],
+                   "fri": [{"children": [fx["posts"][1]["text"].split(" fra")[0]]}]})
+check("Familie: sættes tilbage i children, titel og noter", fres["calendar"][0]["children"] == ["Emma"]
+      and fres["calendar"][0]["title"] == "Emmas fødselsdag" and fres["calendar"][0]["notes"] == "Anders skal bage. Oscar tager med.")
+check("Familie: tåler små variationer i dæknavnet", fres["husk"][0]["children"] == ["Oscar", "Emma"] and fres["husk"][0]["text"] == "Kage: Emma")
+check("Familie: fælles dæknavn sættes tilbage som fornavnet", fres["fri"][0]["children"] == ["Emma"])
+solo = agent.NameMask(ncfg, [("Emma Bech", "child")], fam_info)
+check("Familie: entydigt fornavn er altid eget barn, også uden sammenhæng", solo.mask_text("Oscar og Emma kommer") == "Eget barn 2 (0.b) og Eget barn 1 (2.a) kommer")
+check("Familie: uden Aulas fulde navne virker fornavnene stadig", agent.NameMask(ncfg, []).mask_text("Emma") == "Eget barn 1 (2.a)")
+fsec = agent.family_section({**ncfg, "parent": {"name": "Anders Bech", "role": "far", "contact_parent_in": ["2.a"]},
+                             "family_notes": ["Oscar går til fodbold om tirsdagen"]}, solo)
+check("Familie: familieafsnittet uden navne", not any(n in fsec for n in ("Emma", "Oscar", "Anders", "Bech"))
+      and "**Eget barn 1 (2.a)** går i **2.a**" in fsec and "Forælderen er kontaktforælder i: 2.a" in fsec
+      and "Eget barn 2 (0.b) går til fodbold" in fsec)
+check("Familie: uden navneskjul står navnene som før", "Forælderen hedder Anders Bech" in agent.family_section(
+    {**ncfg, "parent": {"name": "Anders Bech"}}))
 
 # Eksisterende aftalers key (med fornavne i sluggen) sendes ikke til AI'en
 nm3 = agent.NameMask(ncfg, [("Hugo Jensen", "child")])
@@ -360,17 +422,20 @@ check("Navne: key sættes tilbage, nye keys røres ikke", res_k["calendar"][0]["
 sent = {}
 def _fake_cc(c, prompt, d):
     sent["prompt"] = prompt
-    return '```json\n{"calendar": [{"key": "aula:ref-1", "title": "Barn 1s fødselsdag", "date": "2030-12-05"}], "weekly_mail": [], "fri": [], "husk": []}\n```'
+    return ('```json\n{"calendar": [{"key": "aula:ref-1", "children": ["Eget barn 1 (2.a)"], "title": "Barn 1s fødselsdag", '
+            '"date": "2030-12-05"}], "weekly_mail": [], "fri": [], "husk": []}\n```')
 orig_cc, orig_state = agent.run_claude_code, dict(agent._names_state)
 agent.run_claude_code = _fake_cc
 agent._names_state["people"] = [("Hugo Jensen", "child")]
 rd = work / "run_e2e"; rd.mkdir(exist_ok=True)
 e2e_cfg = {**cfg, "ai_mode": "claude-code", "hide_names": True}
-e2e = agent.run_ai(e2e_cfg, {"posts": [{"author": "Mette Dam", "text": "Hugo har fødselsdag", "date": "2030-11-01"}], "threads": [],
+e2e = agent.run_ai(e2e_cfg, {"children": cfg["children"], "posts": [{"author": "Mette Dam", "text": "Hugo har fødselsdag, Emma kommer", "date": "2030-11-01"}], "threads": [],
                              "existing_events": [{"key": "aula:12:2030-12-05:hugos-foedselsdag", "subject": "Hugos fødselsdag"}]}, rd)
 agent.run_claude_code = orig_cc
 agent._names_state.clear(); agent._names_state.update(orig_state)
-check("run_ai: ingen af de andres navne i prompten", all(n not in sent["prompt"] for n in ("Hugo", "Mette", "Dam", "hugos-foedselsdag")))
+check("run_ai: ingen navne i prompten, heller ikke familiens", all(n not in sent["prompt"] for n in (
+    "Hugo", "Mette", "Dam", "hugos-foedselsdag", "Emma", "Oscar", "Testforælder")) and '"children": ["Eget barn 1 (2.a)"]' in sent["prompt"])
+check("run_ai: egne børn sættes tilbage i children", e2e["calendar"][0]["children"] == ["Emma"])
 check("run_ai: titel og key sættes tilbage i svaret", e2e["calendar"][0]["title"] == "Hugos fødselsdag"
       and e2e["calendar"][0]["key"] == "aula:12:2030-12-05:hugos-foedselsdag")
 
