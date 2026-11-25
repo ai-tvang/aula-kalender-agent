@@ -406,6 +406,26 @@ check("Familie: familieafsnittet uden navne", not any(n in fsec for n in ("Emma"
 check("Familie: uden navneskjul står navnene som før", "Forælderen hedder Anders Bech" in agent.family_section(
     {**ncfg, "parent": {"name": "Anders Bech"}}))
 
+# Mailadresser, telefonnumre og adresser får dæknavne og sættes ind igen
+cm = agent.NameMask(ncfg, [("Lone Dahl", "guardian")])
+csrc = ("Fødselsdag lørdag kl. 14 på Strandvejen 12, 3140 Ålsgårde. Svar til Lone på 12 34 56 78 eller lone.dahl@mail.dk. "
+        "Ring evt. 1234 5678, +45 87654321 eller 22 333 444. Vi bor på Kirkebakken 4B, 1. th. "
+        "Mødet er kl. 10.00-12.00 den 25.11.2026 (uge 48), lokale 307, 2026-11-25. Igen: 12 34 56 78.")
+ctext = cm.mask_text(csrc)
+check("Kontakt: mail, telefon og adresse sendes ikke", not any(x in ctext for x in (
+    "Strandvejen", "3140", "12 34 56 78", "lone.dahl", "1234 5678", "87654321", "22 333 444", "Kirkebakken")))
+check("Kontakt: dæknavne som Mail, Telefon og Adresse", "på Adresse 1. Svar til" in ctext and "Telefon 1 eller Mail 1" in ctext
+      and "Vi bor på Adresse 2" in ctext)
+check("Kontakt: samme nummer får samme dæknavn", ctext.endswith("Igen: Telefon 1."))
+check("Kontakt: klokkeslæt, datoer, uger og lokaler røres ikke",
+      "kl. 10.00-12.00 den 25.11.2026 (uge 48), lokale 307, 2026-11-25" in ctext and "kl. 14" in ctext)
+check("Kontakt: navnet skjules stadig", "Lone" not in ctext)
+check("Kontakt: alt sættes tilbage, som det stod", cm.restore({"t": ctext})["t"] == csrc)
+cres = cm.restore({"calendar": [{"key": "aula:1:x", "location": "Adresse 1", "notes": "Svar på Telefon 1 eller Mail 1."}]})
+check("Kontakt: sættes ind igen i sted og noter", cres["calendar"][0]["location"] == "Strandvejen 12, 3140 Ålsgårde"
+      and cres["calendar"][0]["notes"] == "Svar på 12 34 56 78 eller lone.dahl@mail.dk.")
+check("Kontakt: virker også uden navnelister", agent.NameMask({}, []).mask_text("Tlf. 12345678") == "Tlf. Telefon 1")
+
 # Eksisterende aftalers key (med fornavne i sluggen) sendes ikke til AI'en
 nm3 = agent.NameMask(ncfg, [("Hugo Jensen", "child")])
 kp = {"existing_events": [{"key": "aula:12:2030-12-05:hugos-foedselsdag", "subject": "Hugos fødselsdag"},
@@ -429,12 +449,12 @@ agent.run_claude_code = _fake_cc
 agent._names_state["people"] = [("Hugo Jensen", "child")]
 rd = work / "run_e2e"; rd.mkdir(exist_ok=True)
 e2e_cfg = {**cfg, "ai_mode": "claude-code", "hide_names": True}
-e2e = agent.run_ai(e2e_cfg, {"children": cfg["children"], "posts": [{"author": "Mette Dam", "text": "Hugo har fødselsdag, Emma kommer", "date": "2030-11-01"}], "threads": [],
+e2e = agent.run_ai(e2e_cfg, {"children": cfg["children"], "posts": [{"author": "Mette Dam", "text": "Hugo har fødselsdag, Emma kommer. Ring 12345678", "date": "2030-11-01"}], "threads": [],
                              "existing_events": [{"key": "aula:12:2030-12-05:hugos-foedselsdag", "subject": "Hugos fødselsdag"}]}, rd)
 agent.run_claude_code = orig_cc
 agent._names_state.clear(); agent._names_state.update(orig_state)
-check("run_ai: ingen navne i prompten, heller ikke familiens", all(n not in sent["prompt"] for n in (
-    "Hugo", "Mette", "Dam", "hugos-foedselsdag", "Emma", "Oscar", "Testforælder")) and '"children": ["Eget barn 1 (2.a)"]' in sent["prompt"])
+check("run_ai: ingen navne eller numre i prompten, heller ikke familiens", all(n not in sent["prompt"] for n in (
+    "Hugo", "Mette", "Dam", "hugos-foedselsdag", "Emma", "Oscar", "Testforælder", "12345678")) and '"children": ["Eget barn 1 (2.a)"]' in sent["prompt"])
 check("run_ai: egne børn sættes tilbage i children", e2e["calendar"][0]["children"] == ["Emma"])
 check("run_ai: titel og key sættes tilbage i svaret", e2e["calendar"][0]["title"] == "Hugos fødselsdag"
       and e2e["calendar"][0]["key"] == "aula:12:2030-12-05:hugos-foedselsdag")

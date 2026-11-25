@@ -2453,9 +2453,25 @@ NAME_ALSO_WORDS = {"Hans", "Bo", "Mark", "Sol", "Dag", "Storm", "Maj", "Juni", "
 SURNAME_ALSO_WORDS = {"Holm", "Skov", "Lund", "Dam", "Bak", "Strand", "Berg", "Bach", "Krog", "Vinter", "Sommer",
                       "Høj", "Bjerg", "Kirk", "Bager", "Smed", "Bonde", "Fisker", "Ravn", "Due", "Kok", "Have",
                       "Gade", "Bro", "Borg", "Sand", "Ring", "Eng", "Mose", "Ny", "Mølle", "Hald", "Ager"}
-ALIAS_WORDS = {"Barn", "Forælder", "Medarbejder", "Person", "Eget", "Forælderen"}
+ALIAS_WORDS = {"Barn", "Forælder", "Medarbejder", "Person", "Eget", "Forælderen", "Mail", "Adresse", "Telefon"}
 MASK_SKIP_KEYS = {"key", "image_file", "date", "end_date", "start", "end", "time", "today", "new_since",
                   "weekday_today", "from", "to", "type"}
+# Mailadresser, telefonnumre og adresser i teksterne får dæknavne som navnene og sættes ind igen bagefter.
+MAIL_RX = re.compile(r"(?<![\w.+\-])[\w.+\-]+@[\w\-]+(?:\.[\w\-]+)+")
+# Danske numre: 8 cifre, evt. +45/0045 foran, samlet eller delt med mellemrum (4+4, 2+2+2+2, 2+3+3).
+PHONE_RX = re.compile(r"(?<![\w+])(?:(?:\+|00)45[ \-]?)?(?:\d{8}|\d{4} \d{4}|\d{2} \d{2} \d{2} \d{2}|\d{2} \d{3} \d{3})(?![\w])")
+_STREET = (r"(?:vej|gade|allé|alle|stræde|plads|torv|vænge|sti|boulevard|bakke|have|park|vang|toft|løkke|"
+           r"kvarter|tværvej|passage|kaj|bro|holm|hus|gård)(?:en|n|et|t|e|ene)?")
+_NO = r"\d{1,4}\s?[A-Za-z]?(?:,?\s*\d{1,2}\.?\s*(?:tv|th|mf|sal)\.?)?"
+_TOWN = r"\d{4}\s+[A-ZÆØÅ][\wæøåÆØÅ\-]+(?:\s[A-ZÆØÅ][\wæøåÆØÅ\-]+)?"
+ADDRESS_RX = re.compile(
+    r"(?<![\w\-])(?:"
+    # Vejnavn med typisk endelse + husnummer (+ evt. postnummer og by)
+    r"(?:[A-ZÆØÅ][\wæøåé.\-]*\s){0,2}[A-ZÆØÅ][\wæøåé\-]*" + _STREET + r"\.?\s" + _NO + r"(?:,?\s+" + _TOWN + r")?"
+    r"|"
+    # Hvilket som helst vejnavn, når der følger postnummer og by
+    r"(?:[A-ZÆØÅ][\wæøåé.\-]*\s){0,2}[A-ZÆØÅ][\wæøåé.\-]*\s" + _NO + r",?\s+" + _TOWN +
+    r")(?![\w])")
 # Familien har faste dæknavne. Børnene nummereres i samme rækkefølge som i config.json.
 FAMILY_PARENT_ALIAS = "Forælderen"
 FAMILY_CHILD_RX = re.compile(r"\b[Ee]get [Bb]arn (\d+)(?: ?\([^)\n]{0,12}\))?")
@@ -2464,7 +2480,9 @@ NAMES_HINT = (
     '"Forælderen" er den forælder, kalenderen er til, og børnene hedder fx "Eget barn 1 (4.c)" (se Familien). '
     'Andre hedder fx "Barn 3", "Forælder 5" og "Medarbejder 2". Samme dæknavn er altid samme person. '
     'Brug dæknavnene præcis, som de står, også i "children" (fx ["Eget barn 1 (4.c)"]). '
-    "De rigtige navne sættes ind igen bagefter."
+    'Mailadresser, telefonnumre og adresser er erstattet på samme måde med "Mail 1", "Telefon 1" og "Adresse 1". '
+    'Brug dem, som de står, fx i "location" eller "notes". '
+    "De rigtige navne og oplysninger sættes ind igen bagefter."
 )
 
 
@@ -2583,6 +2601,8 @@ class NameMask:
     samme fornavn. For forælderen gælder det i tråde, hvor ingen anden deltager har samme fornavn.
     Ellers får fornavnet samme fælles dæknavn som de andre med det fornavn.
     Navne, hvor hverken fornavn eller efternavn står på nogen liste, slipper igennem.
+    Mailadresser, danske telefonnumre og adresser (vejnavn og nummer, evt. postnummer og by) får
+    dæknavne som "Mail 1", "Telefon 1" og "Adresse 1", før navnene skjules.
     """
 
     def __init__(self, cfg: dict, people: list[tuple[str, str]], family: dict | None = None,
@@ -2597,6 +2617,7 @@ class NameMask:
         self.sur_labels: dict[str, set] = {}   # efternavn/mellemnavn fra listerne -> roller
         self.combo: dict[str, str] = {}        # navn, der ikke står samlet på listerne -> dæknavn
         self.sur_alias: dict[str, str] = {}    # efternavn alene -> dæknavn
+        self.contact: dict[tuple, str] = {}    # (slags, mail/telefon/adresse) -> dæknavn
         self.participants = participants or {}
         self._rx = None
         self._srx = None
@@ -2698,6 +2719,17 @@ class NameMask:
             person["alias"] = self._alias(person["label"], first if alone else " ".join(person["tokens"]))
         return person["alias"]
 
+    def _contact_alias(self, kind: str, value: str) -> str:
+        if (kind, value) not in self.contact:
+            self.contact[(kind, value)] = self._alias(kind, value)
+        return self.contact[(kind, value)]
+
+    def mask_contacts(self, text: str) -> str:
+        """Mailadresser, adresser og telefonnumre bliver til "Mail 1", "Adresse 1" og "Telefon 1"."""
+        for kind, rx in (("Mail", MAIL_RX), ("Adresse", ADDRESS_RX), ("Telefon", PHONE_RX)):
+            text = rx.sub(lambda m, k=kind: self._contact_alias(k, m.group(0)), text)
+        return text
+
     def _combo_alias(self, span: str) -> str:
         """Et fornavn og efternavn, der hver for sig står på listerne, men ikke som én person."""
         if span not in self.combo:
@@ -2759,6 +2791,7 @@ class NameMask:
     def mask_text(self, text: str, ctx: frozenset = frozenset()) -> str:
         if not text:
             return text
+        text = self.mask_contacts(text)
         for label, alias in self.labels:  # Kalenderens mærke ("Emma 2.a") er altid eget barn
             text = re.sub(r"(?<![\w\-])" + re.escape(label) + r"(?![\w])", alias, text)
         if not self.by_first:
@@ -2884,7 +2917,7 @@ class NameMask:
             if self.parent_first:
                 obj = re.sub(r"\b" + FAMILY_PARENT_ALIAS + r"\b", self.parent_first, obj)
             if self.back:
-                obj = re.sub(r"\b(Barn|Forælder|Medarbejder|Person) (\d+)(?!\d)",
+                obj = re.sub(r"\b(Barn|Forælder|Medarbejder|Person|Mail|Adresse|Telefon) (\d+)(?!\d)",
                              lambda m: self.back.get(m.group(0), m.group(0)), obj)
         return obj
 
